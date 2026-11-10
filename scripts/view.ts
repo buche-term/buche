@@ -34,7 +34,7 @@
  *   -d, --dir     DIR       A directory to copy; the copy becomes the command's
  *                           working directory. Must point to a directory.
  *   -l, --layout  FILE      Initial layout (carreau JSON: see layouts/).
- *                           Default: one pane, named "main".
+ *                           Default: one unnamed pane.
  *       --port    PORT      Port to listen on. Default: 0 (pick a free port).
  *   -o, --output  FILE      Accepted for CLI compatibility (unused here).
  *   -v, --verbose           Expand full field values when pretty-printing the

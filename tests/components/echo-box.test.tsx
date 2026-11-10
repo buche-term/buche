@@ -99,4 +99,19 @@ describe("echo-box — size polling", () => {
         await frames(50);
         expect(fired).toBe(1); // one forced announcement, then quiet
     });
+
+    test("a ceiling that moved re-announces, so the content grows back into it", async () => {
+        const { box, cell } = setup(100);
+        await frames(50); // baseline at 100; nothing announced
+        let fired = 0;
+        box.addEventListener("resize", () => fired++);
+        // The layout gave the box more room (or less): nothing of the box's own
+        // moved, but what it sizes itself to did, and it has to be asked again.
+        box.ceilingChanged();
+        await frames(50);
+        expect(fired).toBe(1);
+        expect(cell.style.height).toBe("100px"); // pixels never moved
+        await frames(50);
+        expect(fired).toBe(1); // one forced announcement, then quiet
+    });
 });

@@ -94,11 +94,37 @@ const RESERVED = [
     ...["sleft", "sright", "sup", "sdown", "sl", "sr", "su", "sd"],
     ...["tab", "inline", "pop", "float", "f"],
 ];
+/** What the room a prompt zone leaves one of its cells is kept as, for its box
+ *  to be capped by (echo-box.css). */
+const ZONE_CELL_MAX = "--zone-cell-max";
+/** The least room a prompt zone leaves a cell, however little is left over
+ *  after its header: a cell shows something (as carreau's own floor when the
+ *  user drags a cell to a height of its own). */
+const ZONE_MIN_ROOM = 40;
+/** How far short of its zone a cell stops: a line of output and the little the
+ *  stream puts between its cells, so that a clamped cell leaves a whole line of
+ *  its neighbour showing at the edge — the stream says it holds more than the
+ *  one cell. What to tune to taste. */
+const ZONE_PEEK_LINE = 22;
 
-/** The default layout: one pane, named "main", where the first prompt goes. */
+/**
+ * The prompt zone streaming an element, if it is one: a prompt-column's scroll
+ * column, its prompt sitting right after it, outside it (carreau keeps the
+ * prompt pinned below the cells). A plain scroll column, with no prompt of its
+ * own, is no prompt zone: its cells keep the plain 500px ceiling.
+ */
+function promptZoneOf(el: Element): HTMLElement | null {
+    const zone = el.closest<HTMLElement>(".carreau-scroll-column");
+    return zone?.nextElementSibling?.classList.contains("carreau-prompt") ? zone : null;
+}
+
+/** What a box shares a prompt zone's height with, and the room left to it. */
+type ZoneCap = { zone: HTMLElement; cell: HTMLElement; room: number };
+
+/** The default layout: one unnamed pane, where the first prompt goes. */
 export function defaultLayout(): WorkspaceData {
     return {
-        root: { type: "pane", id: genId("p"), weight: 1, tabs: [], active: 0, name: "main" },
+        root: { type: "pane", id: genId("p"), weight: 1, tabs: [], active: 0 },
         floating: [],
     };
 }
@@ -202,6 +228,9 @@ export class Layout {
     private editors = new Map<string, PromptCollection>();
     /** Standby cells: seconds spent scrolled out of view, by tab id. */
     private parked = new Map<string, number>();
+    /** Each box a prompt zone caps, and the room it was last given there (see
+     *  `findZoneCaps` and `syncZoneCeilings`). */
+    private caps = new Map<EchoBox, ZoneCap>();
     private standbyTimeout: number;
     private shell: string | undefined;
 
@@ -266,6 +295,10 @@ export class Layout {
                 }
             });
             this.syncFills();
+            // (A cell this change put in a prompt zone, or moved there, gets its
+            // ceiling before it measures itself: the poll alone is a frame late.)
+            this.findZoneCaps();
+            this.syncZoneCeilings();
             for (const box of this.boxes.values()) {
                 if (box.isConnected) {
                     this.matchBackground(box);
@@ -284,6 +317,18 @@ export class Layout {
                 this.syncFills();
             }
         }).observe(element, { attributes: true, attributeFilter: ["class"], subtree: true });
+        // A prompt zone caps how tall its cells grow, so their room is kept as
+        // it goes: what moves it (a divider drag, the window, the prompt taking
+        // lines as one types, a header wrapping) changes no class and no
+        // layout, only the measurement — hence the same once-a-frame poll the
+        // boxes use for their own size (see EchoBox, and the note in
+        // embedded-term.tsx).
+        const pollZones = () => {
+            requestAnimationFrame(pollZones);
+            this.syncZoneCeilings();
+        };
+        this.findZoneCaps();
+        requestAnimationFrame(pollZones);
         // Esc on a spent pop (see `popUp`), in capture: seen before xterm's
         // textarea turns it into pty input.
         element.addEventListener("keydown", (e) => this.popKey(e), true);
@@ -333,6 +378,73 @@ export class Layout {
             if (box.isConnected) {
                 box.toggleAttribute("fills", this.fills(box, maximized));
             }
+        }
+    }
+
+    // ── Prompt zones ─────────────────────────────────────────────────────────
+    // A prompt zone is a prompt-column's stream: the cells, above the prompt
+    // pinned below them. A cell of it grows no taller than the stream it is
+    // seen in, its header (where the command and its context show) counted in,
+    // and it stops a line short so that what it hides of the stream's other
+    // cells stays partly in view. The layout keeps that room for each box: a
+    // ceiling following what the user can see, rather than a fixed one.
+
+    /** Which boxes a prompt zone caps, the tree having moved: their zone, and
+     *  their cell, whose header shares that zone with them. Boxes that left a
+     *  prompt zone lose the ceiling they were given. */
+    private findZoneCaps(): void {
+        const caps = new Map<EchoBox, ZoneCap>();
+        for (const box of this.boxes.values()) {
+            const zone = box.isConnected ? promptZoneOf(box) : null;
+            const cell = zone ? box.closest<HTMLElement>(".carreau-scrollcell") : null;
+            if (zone && cell) {
+                caps.set(box, { zone, cell, room: this.caps.get(box)?.room ?? 0 });
+            }
+        }
+        for (const box of this.caps.keys()) {
+            if (!caps.has(box)) {
+                box.style.removeProperty(ZONE_CELL_MAX);
+                // Back to the plain ceiling: the content may now take more (or
+                // has to take less), so it is asked again what it measures.
+                if (box.isConnected) {
+                    box.ceilingChanged();
+                }
+            }
+        }
+        this.caps = caps;
+    }
+
+    /**
+     * The room each capped box has in its zone, into its `--zone-cell-max`: the
+     * height its own content sizes itself to, and what a terminal fills with
+     * rows (see `EchoBox.maxContentHeight`). It is the zone's height, less what
+     * the cell shows besides the box — its header, its padding — whatever the
+     * box shares the zone with today, and less the line it stops short by. What
+     * was sized by hand, or given `grow`, has no ceiling to move: `fills` and
+     * `grow` lift it, so those heights are left exactly as they are.
+     */
+    private syncZoneCeilings(): void {
+        for (const [box, cap] of this.caps) {
+            const height = cap.zone.clientHeight;
+            // (Not rendered — its tab is out of view: nothing to measure, and a
+            // 0 there would clamp the cell to nothing.)
+            if (height === 0) {
+                continue;
+            }
+            // What the cell shows besides its box, whatever that is today, plus
+            // the line it stops short by: what is clamped shows a sliver of
+            // what else the stream holds, rather than the whole view.
+            const above =
+                Math.max(0, cap.cell.offsetHeight - box.offsetHeight) + ZONE_PEEK_LINE;
+            const room = Math.max(ZONE_MIN_ROOM, height - above);
+            if (room === cap.room) {
+                continue;
+            }
+            cap.room = room;
+            box.style.setProperty(ZONE_CELL_MAX, `${room}px`);
+            // What the room freed up, the content only takes if it is asked:
+            // growing back changes no pixel of the box's own (see ceilingChanged).
+            box.ceilingChanged();
         }
     }
 

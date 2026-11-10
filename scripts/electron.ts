@@ -10,7 +10,7 @@
  *                           configuration's `shell` (see config/default.yaml).
  *   -d, --dir DIR           Working directory for that process.
  *   -l, --layout FILE       Initial layout (carreau JSON: see layouts/).
- *                           Default: one pane, named "main".
+ *                           Default: one unnamed pane.
  *       --devtools          Open the window's devtools on start.
  *       --print-messages    Print the incoming/outgoing driver messages on
  *                           stdout (hidden by default).

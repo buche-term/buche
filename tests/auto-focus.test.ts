@@ -7,7 +7,7 @@
 
 import { panes as panesOf, type Rect } from "carreau";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import type { EchoBox } from "../src/components/echo-box.tsx";
+import { EchoBox } from "../src/components/echo-box.tsx";
 import { EmbeddedTerm } from "../src/components/embedded-term.tsx";
 import type { PromptCollection } from "../src/components/prompt-collection.tsx";
 import { Buche, type InM } from "../src/core.ts";
@@ -647,7 +647,7 @@ describe("placement", () => {
         };
         driver({ type: "configure", kind: "prompt", from: SHELL, label: "cq" });
         const main = paneOf("cq");
-        expect(main?.name).toBe("main");
+        expect(main?.name).toBeUndefined();
 
         // `@left coquille`: the sub-shell's placeholder goes in a new pane on
         // the left, and its prompt takes its place there.
@@ -687,23 +687,23 @@ describe("placement", () => {
         expect(
             iface.layout.boxOf(ctx.buche.get([...sub, "cq", "4"]))?.closest(".carreau-scroll"),
         ).not.toBeNull();
-        // Names: an existing pane, or a new one.
+        // Names: a new pane is made for one, and then found by it again.
         driver({
             type: "configure",
             kind: "terminal",
             from: [...sub, "cq", "5"],
-            zone: "main",
-            label: "far",
+            zone: "logs",
+            label: "logged",
         });
-        expect(paneOf("far")).toBe(paneOf("cq"));
+        expect(paneOf("logged")?.name).toBe("logs");
         driver({
             type: "configure",
             kind: "terminal",
             from: [...sub, "cq", "6"],
             zone: "logs",
-            label: "logged",
+            label: "again",
         });
-        expect(paneOf("logged")?.name).toBe("logs");
+        expect(paneOf("again")).toBe(paneOf("logged"));
     });
 
     test("`focus`: a new cell, or a process's, takes the focus as it appears", () => {
@@ -851,6 +851,55 @@ describe("placement", () => {
         const plain = [...SHELL, "2"];
         driver({ type: "configure", kind: "frame", from: plain });
         expect(iface.layout.boxOf(buche.get(plain))?.hasAttribute("grow")).toBe(false);
+    });
+
+    test("a prompt zone caps its cells with the room left to them, header included", () => {
+        const ctx = setup();
+        const { container, iface, driver } = ctx;
+        driver({ type: "configure", kind: "prompt", from: SHELL, label: "cq" });
+        const { box } = run(ctx); // its cell, in the prompt's stream
+        // happy-dom has no layout: the heights the once-a-frame poll reads are
+        // stubbed, as in the component tests, and the poll is rung by hand.
+        const size = (el: HTMLElement, prop: string, px: number) =>
+            Object.defineProperty(el, prop, { configurable: true, get: () => px });
+        const layout = iface.layout as unknown as {
+            findZoneCaps(): void;
+            syncZoneCeilings(): void;
+            boxes: Map<string, EchoBox>;
+        };
+        const room = () => box()?.style.getPropertyValue("--zone-cell-max");
+        const zone = container.querySelector<HTMLElement>(".carreau-scroll-column")!;
+        const cell = box()!.closest(".carreau-scrollcell") as HTMLElement;
+        layout.findZoneCaps();
+        size(zone, "clientHeight", 240);
+        size(cell, "offsetHeight", 40); // its header, its padding: what shares the zone
+        layout.syncZoneCeilings();
+        expect(room()).toBe("178px"); // 240 − 40 − the line it stops short by
+        // It follows the zone and the cell, whatever moved either.
+        size(zone, "clientHeight", 180);
+        layout.syncZoneCeilings();
+        expect(room()).toBe("118px");
+        size(cell, "offsetHeight", 70); // a command echo that took another line
+        layout.syncZoneCeilings();
+        expect(room()).toBe("88px");
+        // A zone with nothing left to give: the cell keeps some room of its own.
+        size(zone, "clientHeight", 60);
+        layout.syncZoneCeilings();
+        expect(room()).toBe("40px");
+        // Out of view (nothing to measure): what it had, not a clamp to nothing.
+        size(zone, "clientHeight", 0);
+        layout.syncZoneCeilings();
+        expect(room()).toBe("40px");
+        // Streamed somewhere with no prompt of its own: no ceiling from a zone.
+        const plain = document.createElement("div");
+        plain.className = "carreau-scroll-column";
+        const elsewhere = new EchoBox();
+        plain.append(elsewhere);
+        container.append(plain);
+        layout.boxes.set("elsewhere", elsewhere);
+        layout.findZoneCaps();
+        layout.syncZoneCeilings();
+        expect(elsewhere.style.getPropertyValue("--zone-cell-max")).toBe("");
     });
 
     test("split zones always make a new pane; float zones a new window", async () => {
@@ -1208,7 +1257,7 @@ describe("slots", () => {
             from: ["$d1", "$proc", "cq"],
             label: "cq",
         });
-        expect(iface.layout.ws.paneByName("main")!.tabs.map((t) => t.title)).toEqual(["cq"]);
+        expect(panesOf(iface.layout.ws.root)[0].tabs.map((t) => t.title)).toEqual(["cq"]);
     });
 });
 

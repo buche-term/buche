@@ -143,10 +143,10 @@ under `ConfigureMessage`):
   appears.
 - `background`: create the cell without stealing the focus.
 - `sticky`: keep the focus in the cell when your process ends.
-- `grow`: lift the height cap a cell has in a scroll stream (normally ~500px,
-  past which the cell scrolls on its own): the cell takes all the height its
-  content needs, and the user scrolls the stream instead. Meant for long,
-  growing content such as a chat transcript.
+- `grow`: lift the height cap a cell has in a scroll stream (up to ~500px, and
+  no taller than the stream it is seen in, past which the cell scrolls on its
+  own): the cell takes all the height its content needs, and the user scrolls
+  the stream instead. Meant for long, growing content such as a chat transcript.
 - `delegate` (for the shell running you, coquille: buche never sees it):
   which requests about this cell, by type (`["rerun"]`; `true`: all), you
   leave to the shell, instead of receiving them. E.g. a cell you make

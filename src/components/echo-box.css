@@ -9,8 +9,12 @@ echo-box {
 	color: #d4d4d4;
 	font-family: "Menlo", "Consolas", monospace;
 	font-size: 13px;
-	/* Ceiling for the cell; its content sizes its grid to it. */
-	max-height: 500px;
+	/* Ceiling for the cell; its content sizes its grid to it. In a prompt zone,
+	 * the room its cell has there instead, kept by the layout as
+	 * `--zone-cell-max` (the stream, less the cell's header above this box and a
+	 * line): a cell grows no taller than the stream it is seen in, and leaves a
+	 * sliver of the stream's other cells in view. */
+	max-height: min(500px, var(--zone-cell-max, 500px));
 }
 
 /* A box that is a pane's whole content (not a cell in a scroll stream: the

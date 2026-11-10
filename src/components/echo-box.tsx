@@ -7,8 +7,11 @@
 //   box.setContent(term);
 //
 // Sizing: a box in a scroll stream has a CSS `max-height` ceiling (see
-// `maxContentHeight`), up to which its content sizes itself; a box that is its
-// pane's whole content (the `fills` attribute, kept by the layout) fills it.
+// `maxContentHeight`), up to which its content sizes itself — in a prompt zone,
+// no more than the room its cell has there — the zone, less the header above
+// the box and a line of slack (the layout keeps it: see `syncZoneCeilings` in
+// layout.ts). A box that is its pane's whole content (the `fills` attribute,
+// kept by the layout) fills it.
 //
 // Focus: the box is a focusable cell for the FocusManager (focus.ts): it is
 // tagged `focusable="cell"` and takes the DOM focus itself while navigated
@@ -24,7 +27,8 @@
 //     and only when the measurement actually differs. A child terminal's
 //     internal "term-resize" (its pty grid settled, e.g. a fresh terminal's
 //     first real fit) forces the next tick to re-announce even unchanged
-//     pixels.
+//     pixels, and so does `ceilingChanged()` (the box may now size itself
+//     differently: nothing of its own moved yet).
 //
 // Appearance lives in the companion stylesheet `echo-box.css` (or the
 // consolidated components.css).
@@ -49,9 +53,10 @@ export class EchoBox extends HTMLElement implements FocusCommittable {
     private lastWidth = -1;
     private lastHeight = -1;
     private wasHidden = false;
-    // Set when a child terminal's pty grid changed ("term-resize"): forces the
-    // next poll tick to announce even when the box's own pixels are unchanged.
-    private ptyDirty = false;
+    // Forces the next poll tick to announce even when the box's own pixels are
+    // unchanged: a child terminal's pty grid moved ("term-resize"), or the
+    // ceiling the content sizes itself to did (see `ceilingChanged`).
+    private announceNext = false;
     private _entry: Entry | null = null;
 
     connectedCallback(): void {
@@ -99,16 +104,16 @@ export class EchoBox extends HTMLElement implements FocusCommittable {
             return;
         }
         const reappeared = this.wasHidden;
-        const ptyChanged = this.ptyDirty;
+        const forced = this.announceNext;
         this.wasHidden = false;
-        this.ptyDirty = false;
+        this.announceNext = false;
         const same = width === this.lastWidth && height === this.lastHeight;
-        if (!reappeared && !ptyChanged && same) {
+        if (!reappeared && !forced && same) {
             return;
         }
         // The first frame while shown only sets the baseline; the size on
         // arrival is announced by the terminal's "term-appear" instead.
-        if (this.lastWidth < 0 && !reappeared && !ptyChanged) {
+        if (this.lastWidth < 0 && !reappeared && !forced) {
             this.lastWidth = width;
             this.lastHeight = height;
             return;
@@ -174,7 +179,7 @@ export class EchoBox extends HTMLElement implements FocusCommittable {
         // A child terminal's pty-grid change may matter even when the box's
         // pixels did not move (a fresh terminal settling its first real fit).
         this.addEventListener("term-resize", () => {
-            this.ptyDirty = true;
+            this.announceNext = true;
         });
     }
 
@@ -216,6 +221,16 @@ export class EchoBox extends HTMLElement implements FocusCommittable {
             (Number.parseFloat(style.borderTopWidth) || 0) +
             (Number.parseFloat(style.borderBottomWidth) || 0);
         return Math.max(0, max - inset);
+    }
+
+    /** The ceiling the content sizes itself to (`maxContentHeight`) just moved,
+     *  so the next tick re-announces the size whatever the pixels say — which is
+     *  how a box grows back into room that came free: a bigger ceiling changes
+     *  nothing of its own until the content takes it (a terminal's grid and a
+     *  frame's are both re-derived from the announcement). The layout keeps that
+     *  ceiling (see `syncZoneCeilings` there). */
+    ceilingChanged(): void {
+        this.announceNext = true;
     }
 
     /** The cell content area's rendered size, in CSS pixels. */

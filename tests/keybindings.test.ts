@@ -31,7 +31,7 @@ function makeInterface(): [BucheInterface, HTMLElement] {
     const container = document.createElement("div");
     document.body.append(container);
     const iface = new BucheInterface({ container });
-    // (The empty "main" pane offers a slot: these tests put their own cells
+    // (The empty first pane offers a slot: these tests put their own cells
     // around it, and navigate among them only.)
     for (const chooser of container.querySelectorAll("slot-chooser")) {
         chooser.removeAttribute("focusable");
