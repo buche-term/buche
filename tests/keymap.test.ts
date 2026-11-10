@@ -104,36 +104,41 @@ describe("keymap", () => {
         expect(navModes).toEqual(["held", "off"]);
     });
 
-    test("a mode: its key again, sticky; once more, off (or leaveMode)", () => {
+    test("a mode: its key again does nothing; the modifier, or leaveMode, ends it", () => {
         const { keymap, navModes } = setup([
             NAV,
             { key: "escape", action: "leaveMode", when: "mode == nav" },
         ]);
         altDown();
         press({ key: "œ", code: "KeyQ", altKey: true });
-        press({ key: "œ", code: "KeyQ", altKey: true });
-        altUp();
         expect(keymap.mode).toBe("nav");
-        press({ key: "q", code: "KeyQ" });
+        // The mode's key again, still holding: nothing; the key is swallowed.
+        const again = press({ key: "œ", code: "KeyQ", altKey: true });
+        expect(keymap.mode).toBe("nav");
+        expect(again.defaultPrevented).toBe(true);
+        // Releasing the modifier ends it.
+        altUp();
         expect(keymap.mode).toBe("");
+        // leaveMode ends it while the modifier is still held.
         altDown();
         press({ key: "œ", code: "KeyQ", altKey: true });
-        press({ key: "œ", code: "KeyQ", altKey: true });
-        altUp();
-        press({ key: "Escape", code: "Escape" });
+        press({ key: "Escape", code: "Escape", altKey: true });
         expect(keymap.mode).toBe("");
-        expect(navModes).toEqual(["held", "sticky", "off", "held", "sticky", "off"]);
+        altUp();
+        expect(navModes).toEqual(["held", "off", "held", "off"]);
     });
 
-    test("a mode: sticky never", () => {
-        const { keymap } = setup([
-            { ...NAV, args: { mode: "nav", hold: "alt", sticky: "never" } },
-        ]);
+    test("a mode: releasing the modifier ends it, however the key repeat went", () => {
+        const { keymap, navModes } = setup([NAV]);
         altDown();
         press({ key: "œ", code: "KeyQ", altKey: true });
-        press({ key: "œ", code: "KeyQ", altKey: true });
+        for (let i = 0; i < 3; i++) {
+            press({ key: "œ", code: "KeyQ", altKey: true, repeat: true });
+        }
+        expect(keymap.mode).toBe("nav");
         altUp();
         expect(keymap.mode).toBe("");
+        expect(navModes).toEqual(["held", "off"]);
     });
 
     test("a mode: its modifier on one side", () => {
@@ -172,8 +177,7 @@ describe("keymap", () => {
         ]);
         altDown();
         press({ key: "œ", code: "KeyQ", altKey: true });
-        press({ key: "œ", code: "KeyQ", altKey: true }); // (sticky)
-        altUp();
+        // (The mode lasts while Alt is held: the sequence runs inside it.)
         // S, then ←: once.
         press({ key: "s", code: "KeyS" });
         press({ key: "ArrowLeft", code: "ArrowLeft" });
@@ -188,6 +192,7 @@ describe("keymap", () => {
         press({ key: "s", code: "KeyS" });
         press({ key: "x", code: "KeyX" });
         press({ key: "x", code: "KeyX" });
+        altUp();
         expect(ran).toEqual(["swapLeft", "swapLeft", "swapRight", "mark"]);
     });
 

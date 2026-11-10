@@ -7,11 +7,11 @@
 // every key pressed meanwhile: S held, ← ← → swaps three times; modifiers of
 // the prefix's own chord may still be held: Shift+X, then Shift+← is ←).
 //
-// A mode (setMode) lasts while its modifier is held; its key pressed again
-// makes it last until it is left (the key once more, or leaveMode). While it
-// is on, its modifier is left out of the chords (Alt+Left is Left), and keys
-// typed in a text field (a tab's title being edited) are the field's. The
-// layout is in carreau's navigation mode meanwhile (`setNavMode`).
+// A mode (setMode) lasts while its modifier is held; its key, pressed again
+// meanwhile, does nothing (releasing the modifier, or leaveMode, ends it).
+// While it is on, its modifier is left out of the chords (Alt+Left is Left),
+// and keys typed in a text field (a tab's title being edited) are the field's.
+// The layout is in carreau's navigation mode meanwhile (`setNavMode`).
 //
 // The listeners run in the *capture* phase on window, so the bindings win
 // over descendants (CodeMirror stops propagation of keys it handles) — and
@@ -40,8 +40,8 @@ const isTextField = (t: EventTarget | null): boolean =>
     (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName));
 
 export class Keymap {
-    /** The mode on, if any, and whether it's sticky. */
-    active: { spec: ModeSpec; sticky: boolean } | null = null;
+    /** The mode on, if any. */
+    active: ModeSpec | null = null;
     /** A pending sequence: its chords so far, and its last key's state. */
     private pending: {
         chords: string[];
@@ -60,7 +60,7 @@ export class Keymap {
 
     /** The mode on ("" if none). */
     get mode(): string {
-        return this.active?.spec.name ?? "";
+        return this.active?.name ?? "";
     }
 
     attach(target: Window = window): () => void {
@@ -85,10 +85,10 @@ export class Keymap {
     }
 
     /** Enter a mode (held: until its modifier is released). */
-    enter(spec: ModeSpec, sticky = false): void {
+    enter(spec: ModeSpec): void {
         this.pending = null;
-        this.active = { spec, sticky };
-        this.host.setNavMode(sticky ? "sticky" : "held", true);
+        this.active = spec;
+        this.host.setNavMode("held", true);
     }
 
     /** Leave the mode, if any. `commit`: the selected cell takes the focus. */
@@ -148,21 +148,14 @@ export class Keymap {
             if (isTextField(e.target)) {
                 return;
             }
-            // The mode's key again: it becomes sticky (still holding), or ends.
-            if (e.code === active.spec.code) {
+            // The mode's key again, still holding: nothing (the mode lasts as long as the
+            // modifier does). Swallowed all the same: it is not a key of its own.
+            if (e.code === active.code) {
                 this.swallow(e);
-                if (e.repeat) {
-                    return;
-                }
-                if (!active.sticky && active.spec.sticky === "repeat") {
-                    this.enter(active.spec, true);
-                } else if (active.sticky) {
-                    this.leave();
-                }
                 return;
             }
         }
-        const chords = eventChords(e, active?.spec.hold);
+        const chords = eventChords(e, active?.hold);
         const ctx: Context = { ...this.host.context(e), mode: this.mode };
 
         if (this.pending) {
@@ -250,11 +243,11 @@ export class Keymap {
             }
         }
         const active = this.active;
-        if (active && !active.sticky && e.key === CARREAU_MOD[active.spec.hold]) {
-            const { side } = active.spec;
+        if (active && e.key === CARREAU_MOD[active.hold]) {
+            const { side } = active;
             if (
                 side === "either" ||
-                e.code === CARREAU_MOD[active.spec.hold] + (side === "left" ? "Left" : "Right")
+                e.code === CARREAU_MOD[active.hold] + (side === "left" ? "Left" : "Right")
             ) {
                 // On Windows/Linux, releasing a bare Alt focuses the menu bar: not here.
                 e.preventDefault();
@@ -267,7 +260,7 @@ export class Keymap {
         // A modifier released while the window had no focus never sends keyup.
         this.heldMods.clear();
         // (The focus went elsewhere: don't let the cell take it back.)
-        if (this.active && !this.active.sticky) {
+        if (this.active) {
             this.leave(false);
         }
     }

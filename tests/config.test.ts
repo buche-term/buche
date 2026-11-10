@@ -90,13 +90,13 @@ describe("resolveBindings", () => {
             {
                 key: "ctrl+e",
                 action: "setMode",
-                args: { mode: "move", hold: "ctrlright", sticky: "never" },
+                args: { mode: "move", hold: "ctrlright" },
             },
         ]);
         expect(errors).toEqual([]);
         expect(rules.map((r) => r.mode)).toEqual([
-            { name: "nav", hold: "Alt", side: "either", code: "KeyQ", sticky: "repeat" },
-            { name: "move", hold: "Ctrl", side: "right", code: "KeyE", sticky: "never" },
+            { name: "nav", hold: "Alt", side: "either", code: "KeyQ" },
+            { name: "move", hold: "Ctrl", side: "right", code: "KeyE" },
         ]);
     });
 
@@ -123,8 +123,8 @@ describe("resolveBindings", () => {
             "not a sequence",
         ],
         [
-            { key: "alt+e", action: "setMode", args: { mode: "m", hold: "alt", sticky: "yes" } },
-            "sticky",
+            { key: "alt+e", action: "setMode", args: { mode: "m", hold: "alt", sticky: "never" } },
+            'unknown argument "sticky"',
         ],
         [
             { key: "alt+e", action: "focusLeft", when: "mode == mvoe" },

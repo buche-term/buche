@@ -8,9 +8,9 @@
 //
 // Modes are entered with the `setMode` action: e.g. `{ key: alt+q, action:
 // setMode, args: { mode: nav, hold: alt } }` enters the `nav` mode, which
-// lasts while Alt is held (pressing Q again makes it last until it is left:
-// `sticky: repeat`, the default; or `never`). In a mode, the layout is in
-// carreau's navigation mode, and the mode's modifier is left out of chords:
+// lasts while Alt is held (its key, pressed again meanwhile, does nothing).
+// In a mode, the layout is in carreau's navigation mode, and the mode's
+// modifier is left out of chords:
 // `{ key: left, action: focusLeft, when: mode == nav }` is Alt+Left, or Left.
 //
 // Conditions: `mode` (the mode on, "" if none), `inPrompt`, `inPTY` (an
@@ -491,11 +491,8 @@ export interface ModeSpec {
     /** The modifier held for the mode to last, and on which side. */
     hold: Mod;
     side: Side;
-    /** The key entering it (its code): pressed again, see `sticky`. */
+    /** The key entering it (its code): pressed again meanwhile, it does nothing. */
     code: string;
-    /** "repeat": the key pressed again (still holding) makes the mode last
-     *  until it is left; "never": it lasts while held, only. */
-    sticky: "repeat" | "never";
 }
 
 /** A binding, resolved. */
@@ -520,7 +517,6 @@ const FALLBACK_MODE: ModeSpec = {
     hold: "Alt",
     side: "either",
     code: "KeyQ",
-    sticky: "repeat",
 };
 
 /**
@@ -579,10 +575,8 @@ export function resolveBindings(
     for (const r of rules) {
         if (r.mode) {
             const other = modes.get(r.mode.name);
-            if (other && (other.hold !== r.mode.hold || other.sticky !== r.mode.sticky)) {
-                errors.push(
-                    `${r.origin}: mode ${r.mode.name} is entered elsewhere with another hold or sticky`,
-                );
+            if (other && other.hold !== r.mode.hold) {
+                errors.push(`${r.origin}: mode ${r.mode.name} is entered elsewhere with another hold`);
             }
             modes.set(r.mode.name, r.mode);
         }
@@ -685,10 +679,10 @@ function resolveRule(entry: unknown, origin: string, mac: boolean): Rule {
 
 /** setMode's mode, from its key and args. Throws (a message) if wrong. */
 function resolveMode(chords: Chord[], args: Record<string, unknown>, mac: boolean): ModeSpec {
-    const { mode, hold, sticky = "repeat" } = args;
+    const { mode, hold } = args;
     for (const k of Object.keys(args)) {
-        if (!["mode", "hold", "sticky"].includes(k)) {
-            throw new Error(`setMode: unknown argument "${k}" (mode, hold, sticky)`);
+        if (!["mode", "hold"].includes(k)) {
+            throw new Error(`setMode: unknown argument "${k}" (mode, hold)`);
         }
     }
     if (typeof mode !== "string" || !/^[A-Za-z_][\w-]*$/.test(mode)) {
@@ -696,9 +690,6 @@ function resolveMode(chords: Chord[], args: Record<string, unknown>, mac: boolea
     }
     if (typeof hold !== "string") {
         throw new Error("setMode: args.hold: expected the modifier to hold, e.g. alt");
-    }
-    if (sticky !== "repeat" && sticky !== "never") {
-        throw new Error('setMode: args.sticky: expected "repeat" or "never"');
     }
     let held: Chord;
     try {
@@ -717,7 +708,7 @@ function resolveMode(chords: Chord[], args: Record<string, unknown>, mac: boolea
     if (chord.mods.size !== 1 || !chord.mods.has(mod)) {
         throw new Error(`setMode: the key's only modifier must be the one held (${mod})`);
     }
-    return { name: mode, hold: mod, side: held.side, code: chord.code, sticky };
+    return { name: mode, hold: mod, side: held.side, code: chord.code };
 }
 
 /**

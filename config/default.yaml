@@ -39,10 +39,9 @@
 # Modes: setMode enters one, with args
 #   mode:   its name (for the conditions: mode == NAME);
 #   hold:   the modifier (the key's only one) that keeps it on while held;
-#           a side can be given: altleft, ctrlright, ...;
-#   sticky: repeat (default): the key pressed again, still holding, keeps it
-#           on until it is left (the key once more, or leaveMode); never: it
-#           lasts while held, only.
+#           a side can be given: altleft, ctrlright, ... . Its key, pressed
+#           again meanwhile, does nothing: releasing the modifier (or
+#           leaveMode) is what ends the mode.
 # In a mode, the layout is in navigation mode, and the mode's modifier is left
 # out of keys: { key: left, ..., when: mode == nav } is Alt+Left, or Left.
 #
