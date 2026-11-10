@@ -143,6 +143,14 @@ actions.define({
 });
 
 actions.define({
+    id: "newWindow",
+    title: "New window",
+    description: "Open a new window, with a shell session of its own",
+    categories: ["windows"],
+    run: (ctx) => ctx.iface.newWindow(),
+});
+
+actions.define({
     id: "renameWindow",
     title: "Rename the window…",
     description: "Change the window's title",

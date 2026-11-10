@@ -104,6 +104,9 @@ bindings:
   - { key: mod+p, action: focusPrompt }
   # A new tab (an empty group, showing what can go in it), in the focused pane.
   - { key: cmd+t, action: insert }
+  # A new window, of its own shell session (in Electron the menu answers Cmd+N;
+  # this binding is what the browser view uses).
+  - { key: mod+n, action: newWindow }
   - { key: ctrl+l, action: clearPrompt, when: inPrompt }
   - { key: ctrl+tab, action: nextTab }
   - { key: ctrl+shift+tab, action: prevTab }

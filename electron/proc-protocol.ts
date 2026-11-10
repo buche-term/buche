@@ -16,12 +16,14 @@
 //       webPreferences: { preload: path.join(__dirname, "preload.cjs") },
 //   }));
 //   initProcProtocol();
-//   setWebContents(win.webContents);
+//   addWebContents(win.webContents);
 //
 // Requests the renderer's preload answers from its cache never leave main;
-// cache misses are relayed to the renderer (`proc:request`) and awaited — the
-// renderer routes them to the owning process (see `installGuiRelay` in
-// src/interface.tsx) and answers through the preload (`proc:response`).
+// cache misses are relayed to the windows (`proc:request`) and awaited — each
+// window's interface routes them to its own owning process and only that one
+// answers (see `installGuiRelay` in src/interface.tsx), through the preload
+// (`proc:response`). More than one window is tracked (Cmd+N): the request goes
+// to all of them, and the first answer is taken.
 
 import { ipcMain, protocol, type WebContents } from "electron";
 import { guiCsp } from "../src/csp.ts";
@@ -54,7 +56,7 @@ let runtimeHtml = "<!doctype html><html><body></body></html>";
 // runtime document: a document or worker loaded from either scheme gets the
 // policy of its own response, not its loader's.
 const CSP = { "content-security-policy": guiCsp() };
-let contents: WebContents | null = null;
+const pages = new Set<WebContents>();
 
 /** The runtime document served at `proc://<cell-id>/` (the `html`-less GUI
  *  shell; see guiRuntimeDocument). */
@@ -62,8 +64,14 @@ export function setRuntimeHtml(html: string): void {
     runtimeHtml = html;
 }
 
-export function setWebContents(wc: WebContents): void {
-    contents = wc;
+/** Track a window's page: cache misses are relayed to every live one, and the
+ *  page holding the cell answers (only that one finds it). */
+export function addWebContents(wc: WebContents): void {
+    pages.add(wc);
+}
+
+export function removeWebContents(wc: WebContents): void {
+    pages.delete(wc);
 }
 
 /** Must run before the app is ready (registers `lib:` too, since the
@@ -158,7 +166,8 @@ export function initProcProtocol(): void {
             });
         }
 
-        if (!contents || contents.isDestroyed()) {
+        const live = [...pages].filter((c) => !c.isDestroyed());
+        if (live.length === 0) {
             return new Response("Not available", { status: 503 });
         }
 
@@ -180,13 +189,18 @@ export function initProcProtocol(): void {
             });
         });
 
-        contents.send("proc:request", {
+        const relay = {
             requestId,
             cellId,
             path: resourcePath,
             method: request.method,
             params: Object.fromEntries(url.searchParams),
-        });
+        };
+        // Every window is asked; only the one whose page holds the cell answers
+        // (see installGuiRelay, src/interface.tsx).
+        for (const contents of live) {
+            contents.send("proc:request", relay);
+        }
 
         try {
             const answer = await answered;

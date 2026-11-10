@@ -72,6 +72,17 @@ export class InertInterface implements Interface {
     processMessage(buche: Buche, message: OutgoingInterfaceMessage) {}
 }
 
+/** What the Electron preload bridge exposes to the page (electron/preload.ts);
+ *  the browser view has none. */
+interface BucheBridge {
+    window?: {
+        new?(): void;
+        close?(): void;
+    };
+}
+
+const bridge = (): BucheBridge | undefined => (window as unknown as { buche?: BucheBridge }).buche;
+
 const isVisible = (el: HTMLElement): boolean =>
     el.isConnected &&
     !el.closest("[hidden]") &&
@@ -160,6 +171,7 @@ export class BucheInterface implements Interface {
                     }),
                 spawn: (command, zone) =>
                     this.interactions.push({ type: "user_spawn", command, zone }),
+                closeWindow: () => this.closeWindow(),
                 // Context menus (see menus.ts): their actions are buche's
                 // (see actions.ts), with the shortcuts bound to them.
                 shortcutFor: (ref) => {
@@ -513,6 +525,32 @@ export class BucheInterface implements Interface {
                 this.focus.commitFocus();
             }
         });
+    }
+
+    /** Close the window (what the last tab's close ends into: see Layout). The
+     *  Electron bridge when there is one (see electron/preload.ts), else the
+     *  browser's own close (a page the browser opened itself may be allowed to
+     *  close its tab; otherwise this is where the view's session simply ends
+     *  with its last process). */
+    closeWindow(): void {
+        const close = bridge()?.window?.close;
+        if (close) {
+            close();
+        } else {
+            window.close();
+        }
+    }
+
+    /** Open another window, of its own session (Cmd+N): the Electron bridge
+     *  when there is one, else a new browser tab on this page (the view runs a
+     *  session per tab, see scripts/view.ts). */
+    newWindow(): void {
+        const open = bridge()?.window?.new;
+        if (open) {
+            open();
+        } else {
+            window.open(window.location.href, "_blank");
+        }
     }
 
     // ── Focus actions ─────────────────────────────────────────────────────────

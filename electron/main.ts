@@ -1,6 +1,7 @@
 // Electron main process: the Electron counterpart of the WebSocket server in
-// scripts/view.ts. It owns the driver process (typically the coquille shell)
-// and relays its messages to the renderer, where the Buche core and the
+// scripts/view.ts. It owns the windows and their driver processes (typically
+// the coquille shell, one session per window: Cmd+N opens another) and relays
+// messages between them and the renderers, where the Buche core and the
 // interface run (see electron/renderer.ts). It also registers the native
 // `proc://` and `lib://` schemes for GUI cells (see electron/proc-protocol.ts).
 //
@@ -30,28 +31,25 @@ import {
     ipcMain,
     Menu,
     nativeImage,
-    type OnBeforeRequestListenerDetails,
+    session,
     systemPreferences,
+    type WebContents,
 } from "electron";
 import { messageLogger } from "../scripts/format.ts";
 import { LAUNCHER_OPTIONS } from "../scripts/launcher.ts";
-import {
-    expandHome,
-    prependPath,
-    type ResolvedShell,
-    resolveShellCommand,
-} from "../scripts/tools.ts";
+import { expandHome, prependPath, resolveShellCommand } from "../scripts/tools.ts";
 import { loadUserConfig, resetBindings } from "../scripts/user-config.ts";
 import { resolveShell } from "../src/config.ts";
 import type { OutgoingDriverMessage } from "../src/driver-exchange/outgoing.ts";
 import { Drivers } from "../src/drivers.ts";
 import { LibraryRegistry } from "../src/library.ts";
 import {
+    addWebContents,
     initLibProtocol,
     initProcProtocol,
     registerProcScheme,
+    removeWebContents,
     setRuntimeHtml,
-    setWebContents,
 } from "./proc-protocol.ts";
 
 interface RunConfig {
@@ -196,17 +194,27 @@ async function start(): Promise<void> {
         event.returnValue = { layout, config: user, defaultConfig: defaults };
     });
 
-    // The shell: its tools installed meanwhile (if it has some: the first run
-    // downloads them), while the window opens.
+    // The shell, its command, and its tools: installed meanwhile (if it has
+    // some: the first run downloads them), while the window opens; the tools
+    // then come first on PATH, for every window's drivers. If they could not be
+    // installed, the command is run anyway (it may be on PATH).
     const shellConfig = resolveShell([defaults, user]);
     for (const error of shellConfig.errors) {
         console.error(`buche: config: ${error}`);
     }
     const shell = shellConfig.shell ?? { command: process.env.SHELL || "sh" };
     const command = config.command ?? expandHome(shell.command);
-    const tools: Promise<ResolvedShell | Error> = resolveShellCommand(shell, {
-        update: config.update,
-    }).catch((e: Error) => e);
+    const toolsReady = resolveShellCommand(shell, { update: config.update })
+        .then((resolved) => {
+            if (resolved.binDir) {
+                prependPath(resolved.binDir);
+            }
+        })
+        .catch((e: Error) => {
+            const message = `${shell.github}: ${e.message}`;
+            console.error(`buche: ${message}`);
+            dialog.showErrorBox("buche: could not install the shell", message);
+        });
 
     await app.whenReady();
 
@@ -224,6 +232,15 @@ async function start(): Promise<void> {
                 label: "Window",
                 submenu: [
                     {
+                        // A new window, of its own shell session (the page's
+                        // key binding comes through `window:new`).
+                        label: "New Window",
+                        accelerator: process.platform === "darwin" ? "Cmd+N" : "CmdOrCtrl+N",
+                        click: () => {
+                            openNewWindow();
+                        },
+                    },
+                    {
                         label: "Close Current Tab",
                         accelerator: process.platform === "darwin" ? "Cmd+W" : "CmdOrCtrl+W",
                         click: (_item, win) => {
@@ -235,7 +252,8 @@ async function start(): Promise<void> {
                     {
                         // Unlike Cmd+Q (held: see guardQuit), right away. Nothing
                         // in the page can hold it open (no beforeunload); the
-                        // window's processes die with it, and the app quits.
+                        // window's processes die with it (and the app, with its
+                        // last window).
                         label: "Close Window Now",
                         // (Not Cmd+Shift+Q: macOS keeps that one for Log Out.)
                         accelerator:
@@ -262,72 +280,134 @@ async function start(): Promise<void> {
     const icon = nativeImage.createFromPath(join(here, "buche.png"));
     app.dock?.setIcon(icon); // (app.dock is macOS-only; the window icon below covers the rest.)
 
-    const win = new BrowserWindow({
-        width: 1280,
-        height: 860,
-        backgroundColor: "#141414",
-        title: `buche — ${command}`,
-        icon,
-        webPreferences: {
-            preload: join(here, "preload.cjs"),
-        },
-    });
-
-    lockDownGuiFrames(win);
-    initProcProtocol();
-    setWebContents(win.webContents);
     // The libraries the drivers declare (src/library.ts), served at lib://.
     const libraries = new LibraryRegistry();
+    initProcProtocol();
     initLibProtocol(libraries);
-    // Renderer problems would otherwise only be visible in devtools. Electron's
-    // dev-mode CSP lecture (which vanishes in a packaged app) is skipped.
-    win.webContents.on("console-message", (event) => {
-        if (
-            (event.level === "error" || event.level === "warning") &&
-            !event.message.includes("Electron Security Warning")
-        ) {
-            console.error(`[renderer:${event.level}] ${event.message}`);
-        }
-    });
-    await win.loadFile(join(here, "index.html"));
-    if (config.devtools) {
-        win.webContents.openDevTools({ mode: "detach" });
-    }
+    lockDownGuiFrames(); // (once, for every window: see below)
 
-    // The window's driver processes (the first one, and the shells started
-    // later: see src/drivers.ts); they die with the window, and the window
-    // with them (like the WebSocket session of scripts/view.ts dies with its
-    // socket). The window closes on the last one's raw exit — not on the
-    // pipes reaching EOF, since a grandchild inheriting them could hold the
-    // window open past the exit (e.g. after Ctrl+D closes the shell).
+    // The windows and their driver processes (the first shell, and the shells
+    // started later: see src/drivers.ts). A window's processes die with it, and
+    // the window with them (like the WebSocket session of scripts/view.ts dies
+    // with its socket): it closes on the last one's raw exit — not on the pipes
+    // reaching EOF, since a grandchild inheriting them could hold the window
+    // open past the exit (e.g. after Ctrl+D closes the shell). The app ends
+    // with its last window.
+    const windows = new Map<BrowserWindow, Drivers>();
     let closed = false;
-    const drivers = new Drivers({
-        cwd: config.cwd,
-        libraries,
-        receive(message) {
-            logMessage("driverIn", message);
-            if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
-                win.webContents.send("driver:message", message);
-            }
-        },
-        exited: () => shutdown(),
-    });
-    // The tools first on PATH, for the shell and everything it runs. If they
-    // could not be installed, the command is run anyway (it may be on PATH).
-    const resolved = await tools;
-    if (resolved instanceof Error) {
-        const message = `${shell.github}: ${resolved.message}`;
-        console.error(`buche: ${message}`);
-        dialog.showErrorBox("buche: could not install the shell", message);
-    } else if (resolved.binDir) {
-        prependPath(resolved.binDir);
-    }
-    drivers.start(command);
 
-    // The renderer's driver messages, to the driver each is for.
-    ipcMain.on("driver:message", (_event, message: OutgoingDriverMessage) => {
+    function shutdown(): void {
+        if (closed) {
+            return;
+        }
+        closed = true;
+        for (const drivers of windows.values()) {
+            drivers.kill();
+        }
+        app.quit();
+    }
+
+    /** A window and the drivers of its own; the page loads, then they can
+     *  start (`command`, once the shell's tools are on PATH). */
+    async function openWindow(options: { devtools?: boolean } = {}): Promise<Drivers> {
+        const win = new BrowserWindow({
+            width: 1280,
+            height: 860,
+            backgroundColor: "#141414",
+            title: `buche — ${command}`,
+            icon,
+            webPreferences: {
+                preload: join(here, "preload.cjs"),
+            },
+        });
+        const wc = win.webContents;
+        const wcId = wc.id;
+        guardWindowNetwork(wc);
+        addWebContents(wc);
+        guiPages.add(wcId);
+        // Renderer problems would otherwise only be visible in devtools.
+        // Electron's dev-mode CSP lecture (which vanishes in a packaged app) is
+        // skipped.
+        wc.on("console-message", (event) => {
+            if (
+                (event.level === "error" || event.level === "warning") &&
+                !event.message.includes("Electron Security Warning")
+            ) {
+                console.error(`[renderer:${event.level}] ${event.message}`);
+            }
+        });
+        const drivers = new Drivers({
+            cwd: config.cwd,
+            libraries,
+            receive(message) {
+                logMessage("driverIn", message);
+                if (!win.isDestroyed() && !wc.isDestroyed()) {
+                    wc.send("driver:message", message);
+                }
+            },
+            exited: () => {
+                if (!win.isDestroyed()) {
+                    win.close();
+                }
+            },
+        });
+        windows.set(win, drivers);
+        win.on("closed", () => {
+            // (After the close, `win.webContents` throws: the window is gone.
+            // The teardown works from the references taken while it lived.)
+            removeWebContents(wc);
+            guiPages.delete(wcId);
+            windows.delete(win);
+            drivers.kill();
+            if (windows.size === 0) {
+                shutdown();
+            }
+        });
+        guardQuit(win);
+        await wc.loadFile(join(here, "index.html"));
+        if (options.devtools) {
+            wc.openDevTools({ mode: "detach" });
+        }
+        return drivers;
+    }
+
+    /** A new window, with a shell session of its own (Cmd+N: the menu's item,
+     *  or the page's key binding through `window:new`). */
+    function openNewWindow(): void {
+        void openWindow().then(async (drivers) => {
+            await toolsReady;
+            drivers.start(command);
+        });
+    }
+
+    const first = await openWindow({ devtools: config.devtools });
+    // The shell's tools, first on PATH for every window's drivers (the first
+    // run installs them, meanwhile). If they could not be installed, the
+    // command is run anyway (it may be on PATH).
+    await toolsReady;
+    first.start(command);
+
+    // The renderer's driver messages, to the drivers of the window they came
+    // from.
+    ipcMain.on("driver:message", (event, message: OutgoingDriverMessage) => {
+        const win = BrowserWindow.fromWebContents(event.sender);
+        const drivers = win ? windows.get(win) : undefined;
+        if (!drivers) {
+            return;
+        }
         logMessage("driverOut", message);
         drivers.send(message);
+    });
+
+    ipcMain.on("window:new", () => {
+        openNewWindow();
+    });
+
+    // Closing the window, asked from the page (the last tab's close ends into
+    // it, see src/interface.tsx). Like the menu's Close Window Now: nothing in
+    // the page can hold it open (no beforeunload); its processes die with it.
+    ipcMain.on("window:close", (event) => {
+        BrowserWindow.fromWebContents(event.sender)?.close();
     });
 
     // Window title changes from the renderer (Alt+Q T popup, see
@@ -336,18 +416,6 @@ async function start(): Promise<void> {
         BrowserWindow.fromWebContents(event.sender)?.setTitle(String(title));
     });
 
-    function shutdown(): void {
-        if (closed) {
-            return;
-        }
-        closed = true;
-        drivers.kill();
-        app.quit();
-    }
-
-    guardQuit(win);
-
-    win.on("closed", shutdown);
     app.on("before-quit", shutdown);
     app.on("window-all-closed", shutdown);
 
@@ -370,35 +438,44 @@ async function start(): Promise<void> {
 /**
  * No network for GUI frames (see src/csp.ts), at the network layer: the
  * backstop behind the CSP their documents carry, which also stops what CSP
- * can't, a frame navigating itself to an http(s) URL. Of the window's
- * requests, only its top-level page's (the shell, loaded from file:) may go
- * to http(s) or ws(s); a request from any other frame, or one that can't be
- * traced to a frame (a worker's, a frame already gone), is cancelled. Other
- * web contents (the devtools) are left alone.
+ * can't, a frame navigating itself to an http(s) URL. Of a window's requests,
+ * only its top-level page's (the shell, loaded from file:) may go to http(s)
+ * or ws(s); a request from any other frame, or one that can't be traced to a
+ * frame (a worker's, a frame already gone), is cancelled. Other web contents
+ * (the devtools) are left alone.
+ *
+ * Registered once for every window (`webRequest.onBeforeRequest` replaces its
+ * listener rather than stacking one per window); `guiPages` tells the buche
+ * windows' pages from the rest.
  *
  * WebRTC escapes both layers. Short of disabling it, UDP is limited to what
  * goes through a proxy (none, normally): no STUN, so no direct peer traffic
  * (a TURN server over TCP would still be reachable).
  */
-function lockDownGuiFrames(win: BrowserWindow): void {
-    const wc = win.webContents;
-    const outside = (details: OnBeforeRequestListenerDetails): boolean => {
-        if (details.webContentsId !== wc.id) {
-            return false;
-        }
-        const frame = details.frame;
-        return details.resourceType === "subFrame" || frame == null || frame.parent !== null;
-    };
-    wc.session.webRequest.onBeforeRequest(
+const guiPages = new Set<number>();
+
+function lockDownGuiFrames(): void {
+    session.defaultSession.webRequest.onBeforeRequest(
         { urls: ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"] },
         (details, callback) => {
-            const cancel = outside(details);
+            const id = details.webContentsId;
+            if (id === undefined || !guiPages.has(id)) {
+                callback({ cancel: false });
+                return;
+            }
+            const frame = details.frame;
+            const cancel =
+                details.resourceType === "subFrame" || frame == null || frame.parent !== null;
             if (cancel) {
                 console.error(`[buche] blocked a GUI request: ${details.url}`);
             }
             callback({ cancel });
         },
     );
+}
+
+/** The per-window part of the lockdown, on the window's page. */
+function guardWindowNetwork(wc: WebContents): void {
     wc.setWebRTCIPHandlingPolicy("disable_non_proxied_udp");
 }
 

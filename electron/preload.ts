@@ -44,6 +44,11 @@ contextBridge.exposeInMainWorld("buche", {
     window: {
         // Rename the window (Alt+Q T popup, src/components/title-editor.ts).
         setTitle: (title: string) => ipcRenderer.send("window:title", title),
+        // A new window, of its own session (Cmd+N, see electron/main.ts).
+        new: () => ipcRenderer.send("window:new"),
+        // Close the window (what the last tab's close ends into,
+        // src/interface.tsx).
+        close: () => ipcRenderer.send("window:close"),
     },
     proc: {
         respond: (

@@ -71,6 +71,9 @@ export interface LayoutHost {
     run(prompt: Entry, text: string, zone: string): void;
     /** Start a shell of its own (no prompt to run it from), its prompt in `zone`. */
     spawn(command: string, zone: string): void;
+    /** Ask the host to close the window (the last tab's close ends it; see
+     *  `closeLastTab`). */
+    closeWindow(): void;
     /** The shortcut shown for an action in a context menu. */
     shortcutFor?(ref: ActionRef): string | Node | undefined;
     /** The context menus (see menus.ts). */
@@ -197,6 +200,20 @@ export class Layout {
         this.ws.undoableClose = false;
         this.ws.reservedNames = RESERVED_ZONE_NAMES;
         this.ws.lifecycle = this.lifecycle();
+        // The last tab of the main tree: carreau refuses to close it (its pane
+        // would go, and an empty layout is the host's business, not its own).
+        // In buche it closes like any other: its contents are asked the usual
+        // way, and the window ends with them (see `closeLastTab`). Patching the
+        // guards here covers every way a tab closes: carreau's ✕ and middle
+        // click, its actions (the bindings and menus), and Cmd+W.
+        const ws = this.ws;
+        const canCloseTab = ws.canCloseTab.bind(ws);
+        const closeTab = ws.closeTab.bind(ws);
+        const forceClose = ws.forceClose.bind(ws);
+        ws.canCloseTab = () => true;
+        ws.closeTab = (id: string) => (canCloseTab(id) ? closeTab(id) : this.closeLastTab(id));
+        ws.forceClose = (id: string) =>
+            canCloseTab(id) ? forceClose(id) : this.forceCloseLastTab(id);
         configurePrompts(this.ws, {
             // What's typed goes to the driver (see makeEditor): the cells it
             // makes come back through the core.
@@ -1295,6 +1312,49 @@ export class Layout {
     }
 
     // ── Closing ──────────────────────────────────────────────────────────────
+
+    /** Whether the last tab's close is underway (its contents have been asked). */
+    private closingLast = false;
+
+    /**
+     * The main tree's last tab, which carreau will not close (see the
+     * constructor): closing it closes the window. Its contents are asked the
+     * way any tab's are — a refusal leaves everything alone, and the close can
+     * be tried again — and once they have agreed the window closes; its
+     * processes die with it, and it with them. (The tab itself stays in the
+     * layout: the window is going, an empty one is not shown.)
+     */
+    private async closeLastTab(id: string): Promise<boolean> {
+        if (this.closingLast) {
+            return false;
+        }
+        const ft = this.ws.findTab(id);
+        if (!ft) {
+            return false;
+        }
+        this.closingLast = true;
+        try {
+            await this.lifecycle().closeTab(ft.pane.tabs[ft.index]);
+        } catch {
+            this.closingLast = false;
+            return false; // the process refused to close
+        }
+        this.host.closeWindow();
+        return true;
+    }
+
+    /** The last tab's forceful close: its contents are killed, the window goes
+     *  right away. */
+    private forceCloseLastTab(id: string): boolean {
+        const ft = this.ws.findTab(id);
+        if (!ft) {
+            return false;
+        }
+        this.closingLast = true;
+        void this.lifecycle().forceCloseTab(ft.pane.tabs[ft.index]);
+        this.host.closeWindow();
+        return true;
+    }
 
     private lifecycle(): Lifecycle {
         return {
