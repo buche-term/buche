@@ -7,6 +7,7 @@ import { PromptCell } from "./cells/prompt.ts";
 import { BucheGui, GUI_APPEAR_EVENT, GUI_SEND_EVENT } from "./components/buche-gui.tsx";
 import { EchoBox } from "./components/echo-box.tsx";
 import { EmbeddedTerm } from "./components/embedded-term.tsx";
+import { helpShown, hideHelp, refocusHelp, showHelp } from "./components/help-pane.ts";
 import { renderShortcut } from "./components/keys.ts";
 import {
     boundAction,
@@ -27,6 +28,7 @@ import {
 import type { Buche } from "./core";
 import type { Entry } from "./entry.ts";
 import { type FocusChangeDetail, FocusManager } from "./focus.ts";
+import { helpEntries, type PromptBindingsSource, promptHelpEntries } from "./help.ts";
 import type { IncomingInterfaceMessage } from "./interface-exchange/incoming";
 import type {
     CellCommandMessage,
@@ -42,7 +44,7 @@ import { Layout, type LayoutOptions } from "./layout.ts";
 import * as menus from "./menus.ts";
 import type { Action, Json, Target } from "./types.ts";
 import type { BucheErrorMessage } from "./utils";
-import { AsyncQueue } from "./utils.ts";
+import { AsyncQueue, plainText } from "./utils.ts";
 
 export interface Interface {
     interactions: AsyncIterable<IncomingInterfaceMessage | BucheErrorMessage>;
@@ -198,6 +200,7 @@ export class BucheInterface implements Interface {
             this.focus.holdCommits = state !== "off";
             if (state === "off") {
                 queueMicrotask(refocusTitleEditor);
+                queueMicrotask(refocusHelp);
                 queueMicrotask(() => this.layout.focusMoved(this.focus.current));
             }
         });
@@ -486,6 +489,51 @@ export class BucheInterface implements Interface {
     activeTabOf(paneId: string): string | null {
         const n = this.layout.ws.node(paneId);
         return n?.type === "pane" ? (n.tabs[n.active]?.id ?? null) : null;
+    }
+
+    /** Show the keyboard shortcuts (a popup: see help-pane.ts), or close them.
+     *  From a mode, it leaves it (the keys typed next are the help's); when
+     *  the help closes, the focus goes back where it was. */
+    toggleHelp(): void {
+        if (helpShown()) {
+            hideHelp();
+            return;
+        }
+        const previous = this.focus.current;
+        const [modes, rest] = partition(helpEntries(this.rules), (e) =>
+            e.categories.includes("modes"),
+        );
+        const prompts = promptHelpEntries(this.promptBindings(previous), this.rules, isMac());
+        showHelp([...modes, ...prompts, ...rest], {
+            mac: isMac(),
+            enabled: (e) => !e.ref || actions.enabled({ iface: this }, e.ref),
+            done: () => {
+                if (previous?.isConnected) {
+                    this.focus.focus(previous, "restore");
+                    this.focus.commitFocus();
+                }
+            },
+        });
+        // (Not committing the focus to the selected cell: the help keeps it.)
+        this.keys.leave(false);
+    }
+
+    /** The prompts' bindings that work where the focus is (a prompt: its
+     *  own, then the inherited ones of the prompts above it; a cell: those of
+     *  the prompts above it), closest first. Nowhere: the last prompt's. */
+    private promptBindings(at: Element | null): PromptBindingsSource[] {
+        const entry = this.keyEntry(at) ?? this.lastPromptEntry();
+        const sources: PromptBindingsSource[] = [];
+        for (let e: Entry | null | undefined = entry; e; e = e.parent) {
+            if (e.cell instanceof PromptCell) {
+                sources.push({
+                    label: plainText(e.cell.label) || "the prompt",
+                    bindings: e.cell.bindings,
+                    own: e === entry,
+                });
+            }
+        }
+        return sources;
     }
 
     /** Rename the window (a popup: see title-editor.ts). It takes the DOM
@@ -948,4 +996,9 @@ function reportResize(ifc: BucheInterface, eb: EchoBox, entry: Entry): void {
         lastReported.set(eb, sig);
         ifc.interactions.push({ type: "user_resize", pixel, pty, entry });
     });
+}
+
+/** The items that pass a test, and the others. */
+function partition<T>(items: T[], test: (item: T) => boolean): [T[], T[]] {
+    return [items.filter(test), items.filter((i) => !test(i))];
 }

@@ -150,6 +150,14 @@ actions.define({
     run: (ctx) => ctx.iface.renameWindow(),
 });
 
+actions.define({
+    id: "help",
+    title: "Help",
+    description: "Show the keyboard shortcuts, searchable, by category",
+    categories: ["help"],
+    run: (ctx) => ctx.iface.toggleHelp(),
+});
+
 // A new tab, offering what goes in it (see Layout.insert).
 const insert = carreauActions.get("insert");
 if (!insert) {

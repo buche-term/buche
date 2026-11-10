@@ -1,0 +1,210 @@
+/* The help (help-pane.ts): a dimmed overlay, and a box near the top with a
+ * head (title, search, category chips, hint) and the shortcuts in columns.
+ * Colors as the window-title popup's (title-editor.css). */
+
+.buche-help-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 1000;
+	display: flex;
+	justify-content: center;
+	align-items: flex-start;
+	background: rgba(0, 0, 0, 0.3);
+}
+
+.buche-help {
+	margin-top: 8vh;
+	display: flex;
+	flex-direction: column;
+	width: min(960px, 90vw);
+	max-height: 80vh;
+	background: #1c1c1c;
+	color: #d4d4d4;
+	border: 1px solid #333;
+	border-radius: 6px;
+	padding: 10px 12px;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+	font-size: 12.5px;
+	outline: none;
+}
+
+.buche-help:focus-within {
+	border-color: #555;
+}
+
+.buche-help-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 5px;
+	margin-bottom: 8px;
+}
+
+.buche-help-title {
+	font-weight: 600;
+	margin-right: 4px;
+}
+
+.buche-help-search {
+	background: #141414;
+	color: #d4d4d4;
+	border: 1px solid #3a3a3a;
+	border-radius: 4px;
+	font: inherit;
+	padding: 2px 6px;
+	width: 12em;
+	outline: none;
+}
+
+.buche-help-search:focus {
+	border-color: #666;
+}
+
+.buche-help-chips {
+	display: contents;
+}
+
+/* A category: on (filled), or off (struck through). */
+.buche-help-chip {
+	padding: 0 7px;
+	line-height: 18px;
+	border-radius: 9px;
+	border: 1px solid #3a3a3a;
+	color: #777;
+	cursor: pointer;
+	user-select: none;
+	text-decoration: line-through;
+}
+
+.buche-help-chip.on {
+	color: #d4d4d4;
+	background: #2c3340;
+	border-color: #4a5a78;
+	text-decoration: none;
+}
+
+.buche-help:focus .buche-help-chip.cur {
+	outline: 1.5px solid #6a86c0;
+	outline-offset: 1px;
+}
+
+.buche-help-n {
+	margin-left: 4px;
+	font-size: 0.85em;
+	color: #888;
+}
+
+.buche-help-hint {
+	margin-left: auto;
+	color: #777;
+	font-size: 11px;
+}
+
+.buche-help-list {
+	overflow-y: auto;
+	column-width: 28em;
+	column-gap: 28px;
+}
+
+.buche-help-item {
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+	break-inside: avoid;
+	padding: 2px 0;
+}
+
+.buche-help-item.dim {
+	opacity: 0.45;
+}
+
+.buche-help-keys {
+	flex: 0 0 9em;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 2px;
+	font-size: 11.5px;
+	color: #bbb;
+}
+
+.buche-help-key {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.buche-help-where {
+	font-size: 10px;
+	color: #777;
+}
+
+.buche-help-text {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+
+.buche-help-name,
+.buche-help-desc {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.buche-help-desc {
+	font-size: 11px;
+	color: #888;
+}
+
+/* A click expands an entry: its text uncut, and its categories. */
+.buche-help-item {
+	cursor: pointer;
+	border-radius: 3px;
+}
+
+.buche-help-item:hover {
+	background: #242424;
+}
+
+.buche-help-item.expanded {
+	background: #262a31;
+}
+
+.buche-help-item.expanded .buche-help-name,
+.buche-help-item.expanded .buche-help-desc {
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
+
+.buche-help-categories {
+	display: none;
+	flex-wrap: wrap;
+	gap: 4px;
+	margin-top: 3px;
+}
+
+.buche-help-item.expanded .buche-help-categories {
+	display: flex;
+}
+
+.buche-help-category {
+	padding: 0 6px;
+	line-height: 15px;
+	font-size: 10.5px;
+	border: 1px solid #3a3a3a;
+	border-radius: 8px;
+	color: #999;
+}
+
+.buche-help mark {
+	background: #5c4a12;
+	color: inherit;
+	border-radius: 2px;
+}
+
+.buche-help-empty {
+	color: #888;
+	font-style: italic;
+	padding: 2px 0;
+}

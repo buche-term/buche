@@ -64,6 +64,17 @@ export interface CommandAction {
      * are empty (not the prompt's).
      */
     inherit?: boolean;
+    /**
+     * What it does, in a few words (e.g. "Pick a file"), for the help.
+     * Absent: its command line, or the built-in's name.
+     */
+    title?: string;
+
+    /** What it does, in a sentence, for the help. */
+    description?: string;
+
+    /** Where the help files it (e.g. the driver's name, then its own). Absent: "prompt". */
+    categories?: string[];
 }
 
 /** One of the driver's built-in actions (e.g. coquille's submit, next...). */
@@ -83,6 +94,17 @@ export interface BuiltinAction {
      * are empty (not the prompt's).
      */
     inherit?: boolean;
+    /**
+     * What it does, in a few words (e.g. "Pick a file"), for the help.
+     * Absent: its command line, or the built-in's name.
+     */
+    title?: string;
+
+    /** What it does, in a sentence, for the help. */
+    description?: string;
+
+    /** Where the help files it (e.g. the driver's name, then its own). Absent: "prompt". */
+    categories?: string[];
 }
 
 /**

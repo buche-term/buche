@@ -16,7 +16,8 @@ export interface Shortcut {
     keys: string[];
     /** The mode it works in (entered first); null: without a mode. */
     mode: ModeSpec | null;
-    rule: Rule;
+    /** The rule it comes from (null: not one of the rules, e.g. a prompt's binding). */
+    rule: Rule | null;
 }
 
 /** The shortcuts running `ref` at `loc`: the user's latest rules first. */

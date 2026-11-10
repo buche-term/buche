@@ -54,7 +54,7 @@
 #   setMode, leaveMode
 #   focusPrompt, clearPrompt (in a prompt: clear its stream), nextTab,
 #   prevTab, kill, rerun (run the cell's process again, from the start),
-#   renameWindow
+#   renameWindow, help (the keyboard shortcuts)
 #   carreau's layout operations: unexpand, parent, root, child, closeTab,
 #   closePane, forceCloseTab, renameTab, namePane, removePaneName,
 #   toggleStick, group, collapse, float, toggleMaximize, maximize, restore,
@@ -159,6 +159,9 @@ bindings:
   - { key: r,             action: rerun, when: mode == nav }
   - { key: p,             action: focusPrompt, when: mode == nav }
   - { key: t,             action: renameWindow, when: mode == nav }
+
+  # Help: the keyboard shortcuts (searchable, by category).
+  - { key: "shift+/",     action: help, when: mode == nav }
 
   # Insert a new tab (what goes in it, you then pick): I, then Enter, in the
   # focused cell's pane; a direction, in the pane on that side; Shift+direction,

@@ -254,6 +254,21 @@
         "inherit": {
           "type": "boolean",
           "description": "If true, the binding also works in every cell under the prompt's address (the cells of the commands run from it, and theirs...); the closest prompt's inherited binding for a key wins (and in a prompt, its own bindings). Fired from such a cell, the command request's `anchor` is that cell's address, and its text and selection are empty (not the prompt's)."
+        },
+        "title": {
+          "type": "string",
+          "description": "What it does, in a few words (e.g. \"Pick a file\"), for the help. Absent: its command line, or the built-in's name."
+        },
+        "description": {
+          "type": "string",
+          "description": "What it does, in a sentence, for the help."
+        },
+        "categories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Where the help files it (e.g. the driver's name, then its own). Absent: \"prompt\"."
         }
       },
       "required": [
@@ -276,6 +291,21 @@
         "inherit": {
           "type": "boolean",
           "description": "If true, the binding also works in every cell under the prompt's address (the cells of the commands run from it, and theirs...); the closest prompt's inherited binding for a key wins (and in a prompt, its own bindings). Fired from such a cell, the command request's `anchor` is that cell's address, and its text and selection are empty (not the prompt's)."
+        },
+        "title": {
+          "type": "string",
+          "description": "What it does, in a few words (e.g. \"Pick a file\"), for the help. Absent: its command line, or the built-in's name."
+        },
+        "description": {
+          "type": "string",
+          "description": "What it does, in a sentence, for the help."
+        },
+        "categories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Where the help files it (e.g. the driver's name, then its own). Absent: \"prompt\"."
         }
       },
       "required": [

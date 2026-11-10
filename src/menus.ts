@@ -26,6 +26,7 @@ export const PANE_MENU: MenuSpec = [
     { action: "rerun" },
     { action: "namePane" },
     { action: "closePane" },
+    { action: "help" },
 ];
 
 /** A tab's menu: right click on a tab, or on a cell's header (the strip
@@ -39,4 +40,5 @@ export const TAB_MENU: MenuSpec = [
     { action: "collapse" },
     { action: "renameTab" },
     { action: "closeTab" },
+    { action: "help" },
 ];
