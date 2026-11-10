@@ -95,7 +95,7 @@
 shell:
   command: cq
   github: buche-term/coquille
-  version: ">=0.0.1"
+  version: ">=0.0.3"
 
 bindings:
   # ── Global ──────────────────────────────────────────────────────────────────
