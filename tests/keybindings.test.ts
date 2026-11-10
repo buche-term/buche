@@ -394,8 +394,8 @@ describe("configured bindings", () => {
     test("out of a mode, layout operations can be bound too", () => {
         const { iface, container } = setup([{ key: "ctrl+alt+u", action: "undo" }]);
         const ran: string[] = [];
-        iface.nav.run = (action) => {
-            ran.push(String(action));
+        iface.runLayoutAction = (ref) => {
+            ran.push(ref.id);
         };
         key(container, "keydown", { key: "u", code: "KeyU", ctrlKey: true, altKey: true });
         expect(ran).toEqual(["undo"]);

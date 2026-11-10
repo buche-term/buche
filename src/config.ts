@@ -23,6 +23,10 @@
 // what's wrong in it.
 
 import type { Modifier } from "carreau";
+import { type ActionRef, type Args, actions, refKey } from "./actions.ts";
+import { type Chord, chordString, type Mod, parseChord, type Side } from "./chords.ts";
+
+export { canonicalChord, eventChords, type Mod, type Side } from "./chords.ts";
 
 /** The configuration, as parsed from YAML. */
 export interface BucheConfig {
@@ -124,27 +128,6 @@ export function resolveShell(layers: (BucheConfig | null | undefined)[]): {
     return { shell, errors };
 }
 
-export type Mod = "Shift" | "Alt" | "Ctrl" | "Meta";
-export type Side = "left" | "right" | "either";
-
-/** Modifiers in carreau's canonical chord order. */
-const MOD_ORDER: readonly Mod[] = ["Shift", "Alt", "Ctrl", "Meta"];
-
-const MOD_NAMES: Record<string, Mod | "Mod"> = {
-    ctrl: "Ctrl",
-    control: "Ctrl",
-    alt: "Alt",
-    option: "Alt",
-    opt: "Alt",
-    shift: "Shift",
-    meta: "Meta",
-    cmd: "Meta",
-    command: "Meta",
-    super: "Meta",
-    win: "Meta",
-    mod: "Mod",
-};
-
 /** Carreau's name for a modifier (its `activation.modifier`). */
 export const CARREAU_MOD: Record<Mod, Modifier> = {
     Shift: "Shift",
@@ -152,167 +135,6 @@ export const CARREAU_MOD: Record<Mod, Modifier> = {
     Ctrl: "Control",
     Meta: "Meta",
 };
-
-/** Punctuation keys ↔ their `KeyboardEvent.code`. */
-const PUNCTUATION: Record<string, string> = {
-    "-": "Minus",
-    "=": "Equal",
-    "[": "BracketLeft",
-    "]": "BracketRight",
-    "\\": "Backslash",
-    ";": "Semicolon",
-    "'": "Quote",
-    "`": "Backquote",
-    ",": "Comma",
-    ".": "Period",
-    "/": "Slash",
-};
-const PUNCTUATION_CODES: Record<string, string> = Object.fromEntries(
-    Object.entries(PUNCTUATION).map(([ch, code]) => [code, ch]),
-);
-
-/** Named keys (case-insensitive) → their code. */
-const NAMED_KEYS: Record<string, string> = {
-    left: "ArrowLeft",
-    right: "ArrowRight",
-    up: "ArrowUp",
-    down: "ArrowDown",
-    arrowleft: "ArrowLeft",
-    arrowright: "ArrowRight",
-    arrowup: "ArrowUp",
-    arrowdown: "ArrowDown",
-    enter: "Enter",
-    return: "Enter",
-    tab: "Tab",
-    space: "Space",
-    esc: "Escape",
-    escape: "Escape",
-    backspace: "Backspace",
-    delete: "Delete",
-    del: "Delete",
-    insert: "Insert",
-    home: "Home",
-    end: "End",
-    pageup: "PageUp",
-    pagedown: "PageDown",
-};
-
-/** A parsed chord: its modifiers and its key (a `KeyboardEvent.code`). */
-interface Chord {
-    mods: Set<Mod>;
-    code: string;
-    /** For a single modifier restricted to one side (AltLeft+q). */
-    side: Side;
-}
-
-/** The `KeyboardEvent.code` of a key as written in the config. */
-function keyCode(token: string): string | null {
-    if (/^[a-z]$/i.test(token)) {
-        return `Key${token.toUpperCase()}`;
-    }
-    if (/^[0-9]$/.test(token)) {
-        return `Digit${token}`;
-    }
-    if (token in PUNCTUATION) {
-        return PUNCTUATION[token];
-    }
-    const named = NAMED_KEYS[token.toLowerCase()];
-    if (named) {
-        return named;
-    }
-    if (/^f([1-9]|1[0-9]|2[0-4])$/i.test(token)) {
-        return token.toUpperCase();
-    }
-    // A code, as is (KeyQ, Digit1, Comma, Numpad1, ...).
-    if (/^(Key[A-Z]|Digit[0-9]|Numpad\w+)$/.test(token) || token in PUNCTUATION_CODES) {
-        return token;
-    }
-    return null;
-}
-
-/** Parse a chord like "Ctrl+Shift+Tab". Throws (a message) if malformed. */
-function parseChord(text: string, mac: boolean): Chord {
-    const tokens = text.split("+").map((t) => t.trim());
-    const keyToken = tokens.pop() ?? "";
-    const mods = new Set<Mod>();
-    let side: Side = "either";
-    for (const token of tokens) {
-        const m = /^(?:(left|right)?([a-z]+?)(left|right)?)$/i.exec(token);
-        const name = m && MOD_NAMES[m[2].toLowerCase()];
-        if (!m || !name || (m[1] && m[3])) {
-            throw new Error(`"${token}" is not a modifier`);
-        }
-        const mod = name === "Mod" ? (mac ? "Meta" : "Ctrl") : name;
-        const s = (m[1] ?? m[3])?.toLowerCase() as Side | undefined;
-        if (s) {
-            side = s;
-        }
-        mods.add(mod);
-    }
-    if (!keyToken) {
-        throw new Error("no key");
-    }
-    if (MOD_NAMES[keyToken.toLowerCase()]) {
-        throw new Error(`the key is missing (${keyToken} is a modifier)`);
-    }
-    const code = keyCode(keyToken);
-    if (!code) {
-        throw new Error(`"${keyToken}" is not a key`);
-    }
-    return { mods, code, side };
-}
-
-/** A chord in the canonical form: modifiers in order, then the key's code. */
-function chordString(mods: Iterable<Mod>, code: string): string {
-    const set = new Set(mods);
-    return [...MOD_ORDER.filter((m) => set.has(m)), code].join("+");
-}
-
-/**
- * A chord as written (e.g. "Mod+p", "alt+,", "Alt+KeyQ") in the canonical
- * form ("Meta+KeyP", "Alt+Comma", "Alt+KeyQ"); null if it isn't one.
- */
-export function canonicalChord(text: string, mac: boolean): string | null {
-    try {
-        const chord = parseChord(text, mac);
-        return chordString(chord.mods, chord.code);
-    } catch {
-        return null;
-    }
-}
-
-const MOD_FLAGS: [Mod, "shiftKey" | "altKey" | "ctrlKey" | "metaKey"][] = [
-    ["Shift", "shiftKey"],
-    ["Alt", "altKey"],
-    ["Ctrl", "ctrlKey"],
-    ["Meta", "metaKey"],
-];
-
-/**
- * The chords a key event can stand for, in the canonical form: by its
- * physical key (`code`) first, then by the key it types (other keyboard
- * layouts). `strip`: a modifier left out (a mode's).
- */
-export function eventChords(
-    e: Pick<KeyboardEvent, "code" | "key" | "shiftKey" | "altKey" | "ctrlKey" | "metaKey">,
-    strip?: Mod,
-): string[] {
-    const mods = MOD_FLAGS.filter(([m, flag]) => e[flag] && m !== strip).map(([m]) => m);
-    const chords = e.code ? [chordString(mods, e.code)] : [];
-    const typed =
-        e.key === " "
-            ? "Space"
-            : e.key.length === 1
-              ? keyCode(e.key)
-              : (NAMED_KEYS[e.key.toLowerCase()] ?? e.key);
-    if (typed) {
-        const byKey = chordString(mods, typed);
-        if (!chords.includes(byKey)) {
-            chords.push(byKey);
-        }
-    }
-    return chords;
-}
 
 // ── Conditions ────────────────────────────────────────────────────────────────
 
@@ -430,59 +252,6 @@ export function parseCondition(text: string): Condition {
     return { text, test, usesMode, modes };
 }
 
-// ── Actions ───────────────────────────────────────────────────────────────────
-
-const DIRS = ["Left", "Right", "Up", "Down"] as const;
-
-/** Actions buche implements itself (see BucheInterface.runAction). */
-export const BUCHE_ACTIONS = [
-    "setMode",
-    "leaveMode",
-    "focusPrompt",
-    "clearPrompt",
-    "kill",
-    "rerun",
-    "renameWindow",
-    "nextTab",
-    "prevTab",
-    "insert",
-    "insertInto",
-    "insertFloat",
-    ...DIRS.map((d) => `insert${d}`),
-    ...DIRS.map((d) => `insertInto${d}`),
-];
-
-/** Actions carreau implements (its NavAction): layout operations. */
-export const CARREAU_ACTIONS = [
-    "parent",
-    "root",
-    "child",
-    "undo",
-    "redo",
-    "unexpand",
-    "maximize",
-    "restore",
-    "toggleMaximize",
-    "float",
-    "closeTab",
-    "closePane",
-    "forceCloseTab",
-    "group",
-    "collapse",
-    "renameTab",
-    "namePane",
-    "mark",
-    "moveMarked",
-    "clear",
-    "growWidth",
-    "shrinkWidth",
-    "growHeight",
-    "shrinkHeight",
-    ...["focus", "expand", "swap", "move", "moveInto"].flatMap((a) => DIRS.map((d) => a + d)),
-];
-
-const ACTIONS = new Set([...BUCHE_ACTIONS, ...CARREAU_ACTIONS]);
-
 // ── Rules ─────────────────────────────────────────────────────────────────────
 
 /** A mode, as `setMode` enters it. */
@@ -499,8 +268,12 @@ export interface ModeSpec {
 export interface Rule {
     /** Its chords (more than one: a sequence), in the canonical form. */
     keys: string[];
+    /** The action's name, as written (an id, or an alias: see actions.ts). */
     action: string;
+    /** Its arguments, as written. */
     args: Record<string, unknown>;
+    /** The action, resolved (see actions.ts). */
+    ref: ActionRef;
     when: Condition | null;
     /** For setMode: the mode. */
     mode?: ModeSpec;
@@ -549,12 +322,24 @@ export function resolveBindings(
             try {
                 const rule = resolveRule(entry, origin, mac);
                 if (rule.action.startsWith("-")) {
-                    const action = rule.action.slice(1);
+                    // A plain name removes all of the action's rules; with
+                    // arguments, or an alias (insertLeft), only the matching
+                    // ones (setMode's: by name, as its arguments are a mode's).
+                    const name = rule.action.slice(1);
+                    const target = rule.ref;
+                    const specific =
+                        name !== "setMode" &&
+                        (Object.keys(rule.args).length > 0 ||
+                            actions.aliases()[name] !== undefined);
+                    const wanted = specific
+                        ? refKey(actions.resolve(name, rule.args as Args))
+                        : null;
                     const key = rule.keys.join(" ");
                     rules = rules.filter(
                         (r) =>
                             !(
-                                r.action === action &&
+                                r.ref.id === target.id &&
+                                (wanted === null || refKey(r.ref) === wanted) &&
                                 (!key || r.keys.join(" ") === key) &&
                                 (!rule.when || r.when?.text === rule.when.text)
                             ),
@@ -576,7 +361,9 @@ export function resolveBindings(
         if (r.mode) {
             const other = modes.get(r.mode.name);
             if (other && other.hold !== r.mode.hold) {
-                errors.push(`${r.origin}: mode ${r.mode.name} is entered elsewhere with another hold`);
+                errors.push(
+                    `${r.origin}: mode ${r.mode.name} is entered elsewhere with another hold`,
+                );
             }
             modes.set(r.mode.name, r.mode);
         }
@@ -587,6 +374,7 @@ export function resolveBindings(
             keys: ["Alt+KeyQ"],
             action: "setMode",
             args: { mode: "nav", hold: "alt" },
+            ref: { id: "setMode" },
             when: null,
             mode: FALLBACK_MODE,
             origin: "fallback",
@@ -619,12 +407,10 @@ function resolveRule(entry: unknown, origin: string, mac: boolean): Rule {
     }
     const removal = action.startsWith("-");
     const name = removal ? action.slice(1) : action;
-    if (!ACTIONS.has(name)) {
-        throw new Error(`unknown action "${name}"`);
-    }
     if (args !== undefined && !isTable(args)) {
         throw new Error("args: expected a table");
     }
+    const ref = resolveAction(name, args as Args | undefined, removal);
     if (when !== undefined && typeof when !== "string") {
         throw new Error(`when: expected a condition (quote it if it starts with "!")`);
     }
@@ -657,6 +443,7 @@ function resolveRule(entry: unknown, origin: string, mac: boolean): Rule {
         keys: chords.map((c) => chordString(c.mods, c.code)),
         action,
         args: args ?? {},
+        ref,
         when: condition,
         origin,
     };
@@ -675,6 +462,29 @@ function resolveRule(entry: unknown, origin: string, mac: boolean): Rule {
         throw new Error("a key without Ctrl, Alt or Cmd needs a mode (when: mode == ...)");
     }
     return rule;
+}
+
+/**
+ * An action's reference, from its name and arguments (see actions.ts).
+ * Throws (a message) if wrong. For a removal, the arguments are not checked
+ * (see resolveBindings), and an action that requires some is referred to by
+ * its id alone.
+ */
+function resolveAction(name: string, args: Args | undefined, removal: boolean): ActionRef {
+    // (setMode's arguments are checked by resolveMode, with its own messages.)
+    if (name === "setMode") {
+        return { id: "setMode" };
+    }
+    if (removal) {
+        const id = actions.aliases()[name]?.id ?? name;
+        const def = actions.get(id);
+        if (!def) {
+            throw new Error(`unknown action "${name}"`);
+        }
+        const required = Object.values(def.params ?? {}).some((p) => p.default === undefined);
+        return required && actions.aliases()[name] === undefined ? { id } : actions.resolve(name);
+    }
+    return actions.resolve(name, args);
 }
 
 /** setMode's mode, from its key and args. Throws (a message) if wrong. */

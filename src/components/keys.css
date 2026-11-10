@@ -1,0 +1,21 @@
+/* Shortcuts in menus (see keys.ts): glyphs and keys run together, a dot
+ * between words. */
+.buche-keys {
+	display: inline-flex;
+	align-items: center;
+	gap: 1px;
+	white-space: nowrap;
+}
+.buche-key-glyph {
+	display: inline-block;
+	width: 1.05em;
+	height: 1.05em;
+}
+.buche-key-glyph > svg {
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+.buche-keys-sep {
+	padding: 0 1px;
+}

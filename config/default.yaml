@@ -24,11 +24,16 @@
 # action: what it does (see below). `-ACTION` removes the bindings before it
 #         for that action (and that key, and that condition, if given): e.g.
 #         - { key: ctrl+l, action: -clearPrompt }
+#         With a plain name, it removes all of the action's bindings; with
+#         args, or an old directional name (insertLeft), only the matching
+#         ones: -insert removes them all, -insertLeft only those to the left.
 # when:   when it applies (none: always). Contexts: mode (the mode on, or ""),
 #         inPrompt, inPTY (a terminal cell), inFrame (a GUI cell); with ==, !=,
 #         !, &&, || and parentheses: e.g. mode == nav, inPrompt && !mode.
 #         (Quote a condition starting with "!": when: "!inPrompt".)
-# args:   the action's arguments (setMode's, below).
+# args:   the action's arguments (setMode's, and those below), e.g.
+#         - { key: i left, action: insert, args: { target: left, into: true },
+#             when: mode == nav }
 #
 # A key without ctrl, alt or cmd (or a function key) needs a mode: elsewhere,
 # it would take the key away from typing.
@@ -50,12 +55,24 @@
 #   focusPrompt, clearPrompt (in a prompt: clear its stream), nextTab,
 #   prevTab, kill, rerun (run the cell's process again, from the start),
 #   renameWindow
-#   insert, insertFloat, insertInto{Left,Right,Up,Down} (a new tab in the pane
-#   on that side), insert{Left,Right,Up,Down} (in a new pane on that side)
-#   carreau's layout operations: focus*, expand*, unexpand, swap*, move*,
-#   moveInto*, parent, root, child, closeTab, closePane, forceCloseTab,
-#   renameTab, namePane, group, collapse, float, toggleMaximize, maximize,
-#   restore, mark, moveMarked, clear, grow/shrink{Width,Height}, undo, redo
+#   carreau's layout operations: unexpand, parent, root, child, closeTab,
+#   closePane, forceCloseTab, renameTab, namePane, removePaneName,
+#   toggleStick, group, collapse, float, toggleMaximize, maximize, restore,
+#   mark, moveMarked, clear, undo, redo
+# These take arguments (args):
+#   insert   a new cell. target: tab (default: into the focused pane), left,
+#            right, up, down (a new pane on that side), float (a new
+#            window); into: true (with a direction: a new tab in the pane on
+#            that side, or in a new pane there if there is none)
+#   move     the focused tab. target: left, right, up, down; into: as insert's
+#   focus, expand, swap
+#            target: left, right, up, down
+#   resize   the focused cell. axis: width, height; by: grow, shrink
+#   sendTo   the tab or pane. target: a direction, or a pane's name
+# The old names still work, and mean the same: insertInto, insertFloat,
+# insert{Left,Right,Up,Down}, insertInto{Left,...}, focus{Left,...},
+# expand{Left,...}, swap{Left,...}, move{Left,...}, moveInto{Left,...},
+# grow/shrink{Width,Height}.
 
 # The shell: the program a window starts with (unless given with -c), and the
 # one a new tab's "Shell" choice runs. Either a command line, run as is: a

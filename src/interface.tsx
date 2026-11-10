@@ -1,9 +1,13 @@
-import { KeyboardNav, type NavAction, type WorkspaceData } from "carreau";
+import { KeyboardNav, type WorkspaceData } from "carreau";
+import { carreauActions } from "carreau/actions";
+import { type ActionRef, actions, type BucheActionContext } from "./actions.ts";
+import { shortcutsFor } from "./bindings.ts";
 import { echoElementId, isSpent, killable } from "./cell.ts";
 import { PromptCell } from "./cells/prompt.ts";
 import { BucheGui, GUI_APPEAR_EVENT, GUI_SEND_EVENT } from "./components/buche-gui.tsx";
 import { EchoBox } from "./components/echo-box.tsx";
 import { EmbeddedTerm } from "./components/embedded-term.tsx";
+import { renderShortcut } from "./components/keys.ts";
 import {
     boundAction,
     PromptCollection,
@@ -15,7 +19,6 @@ import { refocusTitleEditor, showTitleEditor } from "./components/title-editor.t
 import { showToast } from "./components/toast.ts";
 import {
     type BucheConfig,
-    CARREAU_ACTIONS,
     frameChords,
     type Rule,
     resolveBindings,
@@ -36,6 +39,7 @@ import type {
 import { chordFromEvent, isMac } from "./keychord.ts";
 import { Keymap } from "./keymap.ts";
 import { Layout, type LayoutOptions } from "./layout.ts";
+import * as menus from "./menus.ts";
 import type { Action, Json, Target } from "./types.ts";
 import type { BucheErrorMessage } from "./utils";
 import { AsyncQueue } from "./utils.ts";
@@ -99,6 +103,8 @@ export class BucheInterface implements Interface {
     /** Layout operations (carreau's): their actions, and its navigation
      *  mode, on while a mode is (see keymap.ts). It listens to no keys. */
     nav: KeyboardNav;
+    /** The key bindings, resolved (for the shortcuts menus show). */
+    rules: Rule[];
     /** Counter for the ids given to user commands (see pushCommand). */
     private commandSeq = 0;
     /** The machine (to resolve addresses), once a message came from it. */
@@ -113,6 +119,7 @@ export class BucheInterface implements Interface {
         }
         // The user's configuration over the defaults.
         const { rules, errors } = resolveBindings([defaults, args.config], isMac());
+        this.rules = rules;
         // The shell, for a new tab's "Shell" choice (its tools, if it has
         // some, are already on PATH: see scripts/tools.ts).
         const { shell, errors: shellErrors } = resolveShell([defaults, args.config]);
@@ -156,6 +163,17 @@ export class BucheInterface implements Interface {
                 },
                 spawn: (command, zone) =>
                     this.interactions.push({ type: "user_spawn", command, zone }),
+                // Context menus (see menus.ts): their actions are buche's
+                // (see actions.ts), with the shortcuts bound to them.
+                shortcutFor: (ref) => {
+                    const found = shortcutsFor(this.rules, ref)[0];
+                    return found && renderShortcut(found, isMac());
+                },
+                menus: { pane: menus.PANE_MENU, tab: menus.TAB_MENU },
+                menuActions: {
+                    registry: actions,
+                    context: (ctx: { node?: string; tab?: string }) => ({ iface: this, ...ctx }),
+                },
             },
             this.container,
             args.layout,
@@ -338,22 +356,14 @@ export class BucheInterface implements Interface {
 
     // ── Key bindings ──────────────────────────────────────────────────────────
     // As configured (see config.ts), matched by the keymap (keymap.ts), which
-    // runs the actions here. Buche's own:
-    //   focusPrompt   focus the closest visible prompt (see focusPrompt)
-    //   clearPrompt   in a prompt: clear its stream's spent cells
-    //   nextTab /     switch to the next / previous tab of the current pane
-    //   prevTab       (the focus follows into the new tab)
-    //   kill          kill the current cell (see killCell)
-    //   rerun         run the current cell's process again (see rerunCell)
-    //   renameWindow  rename the window
-    //   insert...     a new tab, offering what goes in it (see Layout.insert)
-    // (setMode and leaveMode are the keymap's.) The others are carreau's
-    // layout operations; out of a mode, the selected cell takes the focus
-    // after them.
+    // runs the rules' actions here. The actions are defined in actions.ts:
+    // buche's own, and carreau's layout operations (out of a mode, the
+    // selected cell takes the focus after them). setMode and leaveMode are
+    // the keymap's.
 
     installKeys(rules: Rule[]): Keymap {
         const keys = new Keymap(rules, {
-            run: (rule, e) => this.runAction(rule.action, e),
+            run: (rule, e) => this.runAction(rule.ref, { event: e }),
             context: (e) => {
                 const t = e.target instanceof Element ? e.target : null;
                 return {
@@ -461,39 +471,21 @@ export class BucheInterface implements Interface {
         return true;
     }
 
-    /** Run a bound action (see installKeys). */
-    runAction(action: string, e: KeyboardEvent): void {
-        const m = /^insert(Into)?(Left|Right|Up|Down)$/.exec(action);
-        if (m) {
-            // Into the pane on that side, or (insertLeft...) a new pane there.
-            const dir = m[2].toLowerCase() as "left" | "right" | "up" | "down";
-            this.layout.insert(dir, !m[1]);
-            return;
-        }
-        const own: Record<string, () => void> = {
-            focusPrompt: () => this.focusPrompt(),
-            // Only that prompt's own stream: other tabs keep their spent cells.
-            clearPrompt: () => {
-                const target = e.target;
-                if (target instanceof Element && target.closest('[focusable="prompt"]')) {
-                    this.clearStream(target);
-                }
-            },
-            nextTab: () => this.cycleTabs(true),
-            prevTab: () => this.cycleTabs(false),
-            kill: () => this.killCell(),
-            rerun: () => this.rerunCell(),
-            renameWindow: () => this.renameWindow(),
-            insert: () => this.layout.insert(),
-            insertInto: () => this.layout.insert(),
-            insertFloat: () => this.layout.insertFloat(),
-        };
-        if (own[action]) {
-            own[action]();
-        } else if ((CARREAU_ACTIONS as string[]).includes(action)) {
-            this.nav.run(action as NavAction);
-            this.commitSelection();
-        }
+    /** Run an action (see actions.ts): a key's (see installKeys), a menu's. */
+    runAction(ref: ActionRef, ctx: Omit<BucheActionContext, "iface"> = {}): void {
+        actions.run({ iface: this, ...ctx }, ref);
+    }
+
+    /** Run one of carreau's actions; then the selected cell takes the focus. */
+    runLayoutAction(ref: ActionRef, ctx: { node?: string; tab?: string } = {}): void {
+        carreauActions.run({ ws: this.layout.ws, view: this.layout.view, ...ctx }, ref);
+        this.commitSelection();
+    }
+
+    /** A pane's active tab. */
+    activeTabOf(paneId: string): string | null {
+        const n = this.layout.ws.node(paneId);
+        return n?.type === "pane" ? (n.tabs[n.active]?.id ?? null) : null;
     }
 
     /** Rename the window (a popup: see title-editor.ts). It takes the DOM
@@ -639,17 +631,18 @@ export class BucheInterface implements Interface {
         return null;
     }
 
-    /** The cell that cell actions apply to (see operandTab). */
-    targetCell(): EchoBox | null {
-        const tab = this.operandTab();
+    /** The cell that cell actions apply to: the given tab's, else the
+     *  operand's (see operandTab). */
+    targetCell(tabId?: string | null): EchoBox | null {
+        const tab = tabId ?? this.operandTab();
         const entry = tab && this.layout.entryOf(tab);
         return (entry && this.layout.boxOf(entry)) || null;
     }
 
     /** SIGTERM (SIGKILL when already unresponsive) to the target cell, without
      *  closing it. */
-    killCell(): void {
-        const box = this.targetCell();
+    killCell(tabId?: string | null): void {
+        const box = this.targetCell(tabId);
         const entry = box?.boundEntry;
         if (!box || !entry) {
             return;
@@ -666,8 +659,8 @@ export class BucheInterface implements Interface {
 
     /** Ask the target cell's driver to run its process again, in the same
      *  cell (see RerunRequest): running or not, it's the driver's call. */
-    rerunCell(): void {
-        const entry = this.targetCell()?.boundEntry;
+    rerunCell(tabId?: string | null): void {
+        const entry = this.targetCell(tabId)?.boundEntry;
         if (entry) {
             this.interactions.push({ type: "user_rerun", entry });
         }
@@ -691,7 +684,7 @@ export class BucheInterface implements Interface {
     }
 
     /** Clear the spent cells of the stream a prompt element is in. */
-    private clearStream(inside: Element): void {
+    clearStream(inside: Element): void {
         const id = inside.closest<HTMLElement>(".carreau-prompt[data-id], [data-id]")?.dataset.id;
         if (id) {
             void this.layout.ws.clear({ id });

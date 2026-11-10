@@ -8,6 +8,7 @@
 // changes, never reverts them, and closing is never undone.
 
 import "carreau/prompt-view";
+import type { ActionRef, MenuActions, MenuSpec } from "carreau";
 import {
     type Complex,
     complexAt,
@@ -64,6 +65,12 @@ export interface LayoutHost {
     run(prompt: Entry, text: string, zone: string): void;
     /** Start a shell of its own (no prompt to run it from), its prompt in `zone`. */
     spawn(command: string, zone: string): void;
+    /** The shortcut shown for an action in a context menu. */
+    shortcutFor?(ref: ActionRef): string | Node | undefined;
+    /** The context menus (see menus.ts). */
+    menus?: { pane?: MenuSpec; tab?: MenuSpec };
+    /** The actions the menus name, and the context they run in (see actions.ts). */
+    menuActions?: MenuActions<any>;
 }
 
 /**
@@ -266,6 +273,9 @@ export class Layout {
                 el.toggleAttribute("delayed", !this.prompted);
                 return el;
             },
+            shortcutFor: (ref) => this.host.shortcutFor?.(ref),
+            menus: this.host.menus,
+            actions: this.host.menuActions,
         });
         this.element = element;
         // (After the view's own listener: what is placed where is rendered.)
