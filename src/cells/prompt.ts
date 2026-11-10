@@ -1,4 +1,5 @@
 import { Cell } from "../cell.ts";
+import { bindingChord, isMac } from "../chords.ts";
 import type { Action, Submission, SubmissionConfiguration } from "../types.ts";
 import { applySubmission } from "../utils.ts";
 
@@ -37,8 +38,43 @@ export interface PromptConfiguration {
 export class PromptCell extends Cell {
     readonly kind = "prompt";
 
-    /** Key chord → action (see Action). */
-    bindings: PromptBindings = {};
+    /** Key chord → action (see Action), as the driver wrote them. */
+    get bindings(): PromptBindings {
+        return this.written;
+    }
+    set bindings(bindings: PromptBindings) {
+        this.written = bindings;
+        // In the canonical form once (see chords.ts), to match key events' chords.
+        this.byChord = new Map();
+        for (const [key, action] of Object.entries(bindings)) {
+            const chord = bindingChord(key, isMac());
+            if (!chord) {
+                console.warn(`buche: a prompt binding's key is not a key: "${key}"`);
+            } else if (!this.byChord.has(chord)) {
+                this.byChord.set(chord, { key, action });
+            }
+        }
+    }
+    private written: PromptBindings = {};
+    private byChord = new Map<string, { key: string; action: Action }>();
+
+    /**
+     * The binding of the first of these chords (canonical: see eventChords)
+     * it binds, if any. `inherited`: only those that work in the cells under
+     * the prompt (see Action's `inherit`).
+     */
+    bound(chords: string[], inherited = false): { key: string; action: Action } | null {
+        for (const chord of chords) {
+            const found = this.byChord.get(chord);
+            if (
+                found &&
+                (!inherited || (typeof found.action === "object" && found.action.inherit))
+            ) {
+                return found;
+            }
+        }
+        return null;
+    }
 
     /** What the user is typing, and the marker above it. */
     input: Submission = {

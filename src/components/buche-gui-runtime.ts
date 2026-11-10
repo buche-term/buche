@@ -1,9 +1,16 @@
 // The runtime injected into <buche-gui> iframes: the element side lives in
 // buche-gui.tsx. The runtime is stringified into the iframe's document, so it
-// must be self-contained: no imports, no outer variables.
+// must be self-contained: no imports, no outer variables. (What it shares with
+// the page, it is given: see RUNTIME.)
 
-// The runtime, run inside the iframe.
-export function bucheGuiRuntime(): void {
+import { CHORD_TABLES, eventChordsWith } from "../chords.ts";
+
+/**
+ * The runtime, run inside the iframe. `eventChords`: the chords a key event
+ * stands for, as the page matches them (chords.ts: its source goes into the
+ * iframe with the runtime's).
+ */
+export function bucheGuiRuntime(eventChords: (e: KeyboardEvent) => string[]): void {
     const TAG = "buche-gui";
     // True when this document itself is served from a registered custom
     // scheme (Electron): native fetch/attributes handle proc:// by themselves.
@@ -444,41 +451,7 @@ export function bucheGuiRuntime(): void {
     // Whether a chord was handed to the page and the focus hasn't left yet.
     let handingOff = false;
 
-    // Punctuation keys' codes.
-    const PUNCTUATION: Record<string, string> = {
-        "-": "Minus",
-        "=": "Equal",
-        "[": "BracketLeft",
-        "]": "BracketRight",
-        "\\": "Backslash",
-        ";": "Semicolon",
-        "'": "Quote",
-        "`": "Backquote",
-        ",": "Comma",
-        ".": "Period",
-        "/": "Slash",
-    };
     const MODIFIER_CODE = /^(Alt|Control|Meta|Shift)(Left|Right)$/;
-
-    // The chords a key event can stand for, as eventChords in config.ts: by
-    // its physical key (its code), then by the key it types.
-    const chordsOf = (e: KeyboardEvent): string[] => {
-        const mods = [
-            e.shiftKey && "Shift",
-            e.altKey && "Alt",
-            e.ctrlKey && "Ctrl",
-            e.metaKey && "Meta",
-        ].filter(Boolean);
-        const k = e.key;
-        const typed = /^[a-z]$/i.test(k)
-            ? `Key${k.toUpperCase()}`
-            : /^\d$/.test(k)
-              ? `Digit${k}`
-              : k === " "
-                ? "Space"
-                : (PUNCTUATION[k] ?? k);
-        return [e.code, typed].filter(Boolean).map((key) => [...mods, key].join("+"));
-    };
 
     const forward = (type: "keydown" | "keyup" | "modifier", e: KeyboardEvent): void => {
         toParent({
@@ -496,7 +469,7 @@ export function bucheGuiRuntime(): void {
     window.addEventListener(
         "keydown",
         (e) => {
-            if (chordsOf(e).some((c) => chords.has(c))) {
+            if (eventChords(e).some((c) => chords.has(c))) {
                 e.preventDefault();
                 e.stopImmediatePropagation();
                 handingOff = true;
@@ -620,7 +593,9 @@ export function bucheGuiRuntime(): void {
     }
 }
 
-export const RUNTIME = `<script>(${bucheGuiRuntime.toString()})();</script>`;
+export const RUNTIME =
+    `<script>(${bucheGuiRuntime.toString()})(` +
+    `(${eventChordsWith.toString()})(${JSON.stringify(CHORD_TABLES)}));</script>`;
 
 /** The empty runtime document, served at `proc://<cell-id>/` when the scheme
  *  is registered natively (Electron); content then arrives through `html`

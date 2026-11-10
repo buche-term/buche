@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, test } from "vitest";
+import { isMac } from "../src/chords.ts";
 import { BucheGui } from "../src/components/buche-gui.tsx";
 import type { EchoBox } from "../src/components/echo-box.tsx";
 import type { EditorFactory, PromptCollection } from "../src/components/prompt-collection.tsx";
@@ -8,7 +9,6 @@ import type { BucheConfig } from "../src/config.ts";
 import { Buche, type InM } from "../src/core.ts";
 import { Entry } from "../src/entry.ts";
 import { BucheInterface } from "../src/interface.tsx";
-import { isMac } from "../src/keychord.ts";
 import "../src/components/echo-box.tsx";
 import "../src/components/prompt-collection.tsx";
 import type { PromptCell } from "../src/cells/prompt.ts";

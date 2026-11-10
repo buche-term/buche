@@ -10,7 +10,7 @@ import {
     shortcutLabel,
     shortcutsFor,
 } from "./bindings.ts";
-import { canonicalChord } from "./chords.ts";
+import { bindingChord } from "./chords.ts";
 import type { ModeSpec, Rule } from "./config.ts";
 import type { Action } from "./types.ts";
 
@@ -145,8 +145,9 @@ export function filterHelp(
 // prompt, and, those marked `inherit`, in the cells under it too (the closest
 // prompt's binding for a key wins). They say what they do in their `title`
 // and `description`, if they do; else a built-in has a name, and a command is
-// shown as is. They are filed under their `categories` (coquille puts all of
-// its own in "cq"), else under "prompt".
+// shown as is (coquille gives its built-ins a title and description; another
+// driver's built-in without one shows its name). They are filed under their
+// `categories` (coquille puts all of its own in "cq"), else under "prompt".
 
 /** A prompt's bindings, for the help. */
 export interface PromptBindingsSource {
@@ -158,21 +159,10 @@ export interface PromptBindingsSource {
     own: boolean;
 }
 
-/** coquille's built-ins (other drivers' are shown by name). */
-const BUILTINS: Record<string, [title: string, description: string]> = {
-    submit: ["Run the command", "Run what is typed, and add it to the history"],
-    run: ["Run, out of the history", "Run what is typed, without adding it to the history"],
-    previous: ["Previous command", "Go back in the history"],
-    next: ["Next command", "Go forward in the history"],
-    complete: ["Complete", "Complete what is typed at the cursor"],
-    close: ["Close the shell", "End the shell, and its prompt"],
-    requests: ["Pending requests", "Show the requests waiting for an answer"],
-};
-
-/** The prompt's virtual keys: an arrow at the edge of the text. */
+/** The prompt's virtual keys (see chords.ts): an arrow at the edge of the text. */
 const VIRTUAL_KEYS: Record<string, [code: string, where: string]> = {
-    previous: ["ArrowUp", "on the first line"],
-    next: ["ArrowDown", "on the last line"],
+    Previous: ["ArrowUp", "on the first line"],
+    Next: ["ArrowDown", "on the last line"],
 };
 
 /** Where a prompt's action is filed: its categories, else "prompt". */
@@ -186,13 +176,11 @@ function describeAction(action: Action): { title: string; description: string } 
     if (typeof action === "string") {
         return { title: action, description: "" };
     }
-    const known = "builtin" in action ? BUILTINS[action.builtin] : undefined;
-    const fallback = "builtin" in action ? (known?.[0] ?? action.builtin) : action.command;
-    const title = action.title ?? fallback;
+    // (A driver says what its built-ins do, as coquille does; else, its name.)
+    const title = action.title ?? ("builtin" in action ? action.builtin : action.command);
     // (With a title of its own, a command still says what it runs.)
     const description =
-        action.description ??
-        (action.title && "command" in action ? action.command : (known?.[1] ?? ""));
+        action.description ?? (action.title && "command" in action ? action.command : "");
     return { title, description };
 }
 
@@ -211,8 +199,10 @@ export function promptHelpEntries(
             if (!source.own && !inherits) {
                 continue;
             }
-            const virtual = VIRTUAL_KEYS[key.toLowerCase()];
-            const chord = virtual ? virtual[0] : canonicalChord(key, mac);
+            // (As the prompt matches it: see PromptCell.bound.)
+            const bound = bindingChord(key, mac);
+            const virtual = bound ? VIRTUAL_KEYS[bound] : undefined;
+            const chord = virtual ? virtual[0] : bound;
             if (!chord || taken.has(chord)) {
                 continue;
             }

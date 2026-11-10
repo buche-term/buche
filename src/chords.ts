@@ -37,7 +37,30 @@ export const PUNCTUATION: Record<string, string> = {
     ".": "Period",
     "/": "Slash",
 };
-export const PUNCTUATION_CODES: Record<string, string> = Object.fromEntries(
+export /** Punctuation typed with Shift (on a US layout) → the key's code: "<" is Shift+Comma. */
+const SHIFTED: Record<string, string> = {
+    "!": "Digit1",
+    "@": "Digit2",
+    "#": "Digit3",
+    $: "Digit4",
+    "%": "Digit5",
+    "^": "Digit6",
+    "&": "Digit7",
+    "*": "Digit8",
+    "(": "Digit9",
+    ")": "Digit0",
+    _: "Minus",
+    "{": "BracketLeft",
+    "}": "BracketRight",
+    "|": "Backslash",
+    ":": "Semicolon",
+    '"': "Quote",
+    "~": "Backquote",
+    "<": "Comma",
+    ">": "Period",
+    "?": "Slash",
+};
+const PUNCTUATION_CODES: Record<string, string> = Object.fromEntries(
     Object.entries(PUNCTUATION).map(([ch, code]) => [code, ch]),
 );
 
@@ -125,7 +148,11 @@ export function parseChord(text: string, mac: boolean): Chord {
     if (MOD_NAMES[keyToken.toLowerCase()]) {
         throw new Error(`the key is missing (${keyToken} is a modifier)`);
     }
-    const code = keyCode(keyToken);
+    // (A shifted character is Shift and its key: "<" is shift+,.)
+    if (keyToken in SHIFTED) {
+        mods.add("Shift");
+    }
+    const code = SHIFTED[keyToken] ?? keyCode(keyToken);
     if (!code) {
         throw new Error(`"${keyToken}" is not a key`);
     }
@@ -151,37 +178,86 @@ export function canonicalChord(text: string, mac: boolean): string | null {
     }
 }
 
-export const MOD_FLAGS: [Mod, "shiftKey" | "altKey" | "ctrlKey" | "metaKey"][] = [
-    ["Shift", "shiftKey"],
-    ["Alt", "altKey"],
-    ["Ctrl", "ctrlKey"],
-    ["Meta", "metaKey"],
-];
+/** The tables `eventChordsWith` takes (data only: they go into GUI iframes as JSON). */
+export const CHORD_TABLES = { punctuation: PUNCTUATION, shifted: SHIFTED, named: NAMED_KEYS };
+
+type EventKeys = Pick<
+    KeyboardEvent,
+    "code" | "key" | "shiftKey" | "altKey" | "ctrlKey" | "metaKey"
+>;
+
+/**
+ * `eventChords`, from these tables. Self-contained (no outer names): GUI
+ * iframes run the same code, stringified into their runtime (see
+ * buche-gui-runtime.ts), so that a key matches the same way there.
+ */
+export function eventChordsWith(
+    tables: typeof CHORD_TABLES,
+): (e: EventKeys, strip?: Mod) => string[] {
+    const flags = [
+        ["Shift", "shiftKey"],
+        ["Alt", "altKey"],
+        ["Ctrl", "ctrlKey"],
+        ["Meta", "metaKey"],
+    ] as const;
+    const chord = (mods: string[], code: string) =>
+        [...flags.map(([m]) => m).filter((m) => mods.includes(m)), code].join("+");
+    return (e, strip) => {
+        const mods: string[] = flags.filter(([m, flag]) => e[flag] && m !== strip).map(([m]) => m);
+        const chords = e.code ? [chord(mods, e.code)] : [];
+        const k = e.key;
+        let typed: string | null = null;
+        if (k === " ") {
+            typed = "Space";
+        } else if (/^[a-z]$/i.test(k)) {
+            typed = `Key${k.toUpperCase()}`;
+        } else if (/^[0-9]$/.test(k)) {
+            typed = `Digit${k}`;
+        } else if (k in tables.punctuation) {
+            typed = tables.punctuation[k];
+        } else if (k in tables.shifted) {
+            // (Typed with Shift on this layout or not, it stands for Shift and its key.)
+            typed = tables.shifted[k];
+            if (strip !== "Shift" && !mods.includes("Shift")) {
+                mods.push("Shift");
+            }
+        } else if (k.length > 1) {
+            typed = tables.named[k.toLowerCase()] ?? k;
+        }
+        if (typed) {
+            const byKey = chord(mods, typed);
+            if (!chords.includes(byKey)) {
+                chords.push(byKey);
+            }
+        }
+        return chords;
+    };
+}
 
 /**
  * The chords a key event can stand for, in the canonical form: by its
  * physical key (`code`) first, then by the key it types (other keyboard
  * layouts). `strip`: a modifier left out (a mode's).
  */
-export function eventChords(
-    e: Pick<KeyboardEvent, "code" | "key" | "shiftKey" | "altKey" | "ctrlKey" | "metaKey">,
-    strip?: Mod,
-): string[] {
-    const mods = MOD_FLAGS.filter(([m, flag]) => e[flag] && m !== strip).map(([m]) => m);
-    const chords = e.code ? [chordString(mods, e.code)] : [];
-    const typed =
-        e.key === " "
-            ? "Space"
-            : e.key.length === 1
-              ? keyCode(e.key)
-              : (NAMED_KEYS[e.key.toLowerCase()] ?? e.key);
-    if (typed) {
-        const byKey = chordString(mods, typed);
-        if (!chords.includes(byKey)) {
-            chords.push(byKey);
-        }
-    }
-    return chords;
+export const eventChords: (e: EventKeys, strip?: Mod) => string[] = eventChordsWith(CHORD_TABLES);
+
+/** A prompt's virtual keys (see PromptCollection): ↑ on the first line, ↓ on the last. */
+export const VIRTUAL_CHORDS: Record<string, string> = { previous: "Previous", next: "Next" };
+
+/**
+ * A prompt binding's key (as its driver writes it: "ctrl+t", "Enter",
+ * "Previous") in the canonical form, as eventChords gives them; null if it
+ * isn't one. The virtual keys stay names: "Previous", "Next".
+ */
+export function bindingChord(key: string, mac: boolean): string | null {
+    return VIRTUAL_CHORDS[key.trim().toLowerCase()] ?? canonicalChord(key, mac);
+}
+
+/** Whether this looks like a Mac, where `Mod` means Cmd (else Ctrl). */
+export function isMac(): boolean {
+    const nav = typeof navigator !== "undefined" ? navigator : undefined;
+    const source = `${nav?.userAgent ?? ""} ${nav?.platform ?? ""}`;
+    return /mac|iphone|ipad|ipod/i.test(source);
 }
 
 // ── Display ───────────────────────────────────────────────────────────────────

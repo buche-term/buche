@@ -5,11 +5,11 @@
 
 import { afterEach, describe, expect, test } from "vitest";
 import type { Shortcut } from "../src/bindings.ts";
+import { isMac } from "../src/chords.ts";
 import type { EchoBox } from "../src/components/echo-box.tsx";
 import { renderShortcut } from "../src/components/keys.ts";
 import { Buche, type InM } from "../src/core.ts";
 import { BucheInterface } from "../src/interface.tsx";
-import { isMac } from "../src/keychord.ts";
 import "../src/components/echo-box.tsx";
 import "../src/components/prompt-collection.tsx";
 

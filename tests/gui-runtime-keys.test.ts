@@ -1,11 +1,12 @@
 // @vitest-environment happy-dom
 // @vitest-environment-options { "url": "about:blank" }
 // The GUI runtime's key handoff: the chords the page gives are handed to it
-// (matched as keychord.ts matches them), and modifier keys are reported
+// (matched as chords.ts matches them), and modifier keys are reported
 // without being kept from the iframe. (The runtime runs in this test's own
 // window, which stands for the iframe: it is its own parent.)
 
 import { beforeAll, beforeEach, expect, test } from "vitest";
+import { eventChords } from "../src/chords.ts";
 import { bucheGuiRuntime } from "../src/components/buche-gui-runtime.ts";
 
 const posted: Record<string, unknown>[] = [];
@@ -19,7 +20,7 @@ beforeAll(() => {
         }
         (post as (...a: unknown[]) => void)(msg, ...rest);
     }) as typeof window.postMessage;
-    bucheGuiRuntime();
+    bucheGuiRuntime(eventChords);
     window.dispatchEvent(
         new MessageEvent("message", {
             source: window,

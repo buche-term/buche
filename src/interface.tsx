@@ -4,13 +4,13 @@ import { type ActionRef, actions, type BucheActionContext } from "./actions.ts";
 import { shortcutsFor } from "./bindings.ts";
 import { echoElementId, isSpent, killable } from "./cell.ts";
 import { PromptCell } from "./cells/prompt.ts";
+import { eventChords, isMac } from "./chords.ts";
 import { BucheGui, GUI_APPEAR_EVENT, GUI_SEND_EVENT } from "./components/buche-gui.tsx";
 import { EchoBox } from "./components/echo-box.tsx";
 import { EmbeddedTerm } from "./components/embedded-term.tsx";
 import { helpShown, hideHelp, refocusHelp, showHelp } from "./components/help-pane.ts";
 import { renderShortcut } from "./components/keys.ts";
 import {
-    boundAction,
     PromptCollection,
     type PromptCommandDetail,
     type PromptCommandEvent,
@@ -38,7 +38,6 @@ import type {
     UpdateCellMessage,
     UpdateEntryMessage,
 } from "./interface-exchange/outgoing";
-import { chordFromEvent, isMac } from "./keychord.ts";
 import { Keymap } from "./keymap.ts";
 import { Layout, type LayoutOptions } from "./layout.ts";
 import * as menus from "./menus.ts";
@@ -192,7 +191,7 @@ export class BucheInterface implements Interface {
                 this.layout.focusMoved(current);
             }
         });
-        this.nav = new KeyboardNav(this.layout.ws, this.layout.view, { bindings: {} }, null);
+        this.nav = new KeyboardNav(this.layout.ws, this.layout.view);
         // Leaving a mode commits the focus to the selected cell: not away from
         // the window-title popup, if one is up.
         this.nav.onChange((state) => {
@@ -419,10 +418,7 @@ export class BucheInterface implements Interface {
             if (!(e.cell instanceof PromptCell)) {
                 continue;
             }
-            const inherited = Object.fromEntries(
-                Object.entries(e.cell.bindings).filter(([, a]) => inherits(a)),
-            );
-            const bound = boundAction(inherited, chords);
+            const bound = e.cell.bound(chords, true);
             if (bound) {
                 return { prompt: e, action: bound.action };
             }
@@ -451,9 +447,9 @@ export class BucheInterface implements Interface {
         if (!entry) {
             return false;
         }
-        const chords = [chordFromEvent(e)];
+        const chords = eventChords(e);
         // (A prompt's own binding: its own to fire.)
-        if (entry.cell instanceof PromptCell && boundAction(entry.cell.bindings, chords)) {
+        if (entry.cell instanceof PromptCell && entry.cell.bound(chords)) {
             return false;
         }
         const found = this.inheritedBinding(entry, chords);

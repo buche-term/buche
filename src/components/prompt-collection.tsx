@@ -67,9 +67,9 @@ import { Decoration, type DecorationSet, EditorView, keymap, WidgetType } from "
 import type { DomProps } from "myjsx/jsx-runtime";
 import { isSpent } from "../cell.ts";
 import { PromptCell } from "../cells/prompt.ts";
+import { eventChords, VIRTUAL_CHORDS } from "../chords.ts";
 import { defaultTheme, resolveColor, styleToCss } from "../color.ts";
 import type { Entry } from "../entry.ts";
-import { chordFromEvent, expandMod, normalizeChord } from "../keychord.ts";
 import type { Action, InteractiveStructuredText, Selection, TextPart } from "../types.ts";
 import { plainText, spliceText, textParts } from "../utils.ts";
 import { buildStructuredText } from "./utils.tsx";
@@ -79,33 +79,15 @@ function promptOf(entry: Entry): PromptCell | null {
     return entry.cell instanceof PromptCell ? entry.cell : null;
 }
 
-/**
- * The action a prompt's `bindings` map binds to one of these chords (the
- * first one that is bound), and the binding's key. `chords`: canonical
- * chords (see chordFromEvent), or virtual ones ("previous"/"next").
- */
-export function boundAction(
-    bindings: Record<string, Action>,
-    chords: string[],
-): { key: string; action: Action } | null {
-    for (const chord of chords) {
-        for (const [key, action] of Object.entries(bindings)) {
-            if (normalizeChord(expandMod(key)) === chord) {
-                return { key, action };
-            }
-        }
-    }
-    return null;
-}
-
 // ── Key bindings ────────────────────────────────────────────────────────────
 // A prompt's Entry carries a `bindings` map like { "Ctrl+L": "clear" }. When a
 // bound chord is pressed in that prompt's editor, a bubbling "command" event is
-// fired carrying the command name, the keyboard event and the Entry. Chord
-// parsing is shared with the global bindings (see keychord.ts).
+// fired carrying the command name, the keyboard event and the Entry. Keys are
+// matched as the global bindings' are (see chords.ts: the prompt holds its
+// bindings in the canonical form, see PromptCell.bound).
 //
 // Bare ArrowUp on the first line and bare ArrowDown on the last line are also
-// matched as the virtual chords "previous" and "next" (no such physical keys
+// matched as the virtual chords "Previous" and "Next" (no such physical keys
 // exist; the names come from history navigation). A binding on "previous"/
 // "next" therefore fires exactly at those line boundaries; with no such binding
 // the arrow keys fall through to the editor's ordinary cursor motion.
@@ -772,16 +754,16 @@ export class PromptCollection extends HTMLElement {
     // ("previous"/"next", see virtualChord) is tried as a fallback, so an
     // explicit ArrowUp/ArrowDown binding still wins everywhere.
     private handleBindings(entry: Entry, e: KeyboardEvent): void {
-        const bindings = promptOf(entry)?.bindings;
-        if (!bindings) {
+        const prompt = promptOf(entry);
+        if (!prompt) {
             return;
         }
-        const chords = [chordFromEvent(e)];
+        const chords = eventChords(e);
         const virtual = this.virtualChord(entry, e);
         if (virtual) {
             chords.push(virtual);
         }
-        const bound = boundAction(bindings, chords);
+        const bound = prompt.bound(chords);
         if (bound) {
             e.preventDefault();
             e.stopPropagation();
@@ -828,7 +810,7 @@ export class PromptCollection extends HTMLElement {
     }
 
     // Virtual chord for a bare ArrowUp/ArrowDown pressed at a line boundary:
-    // "previous" when the cursor is on the first line, "next" when it is on the
+    // "Previous" when the cursor is on the first line, "Next" when it is on the
     // last (null otherwise, or for modified arrows, or unknown editors). The
     // cursor's line is inferred from the text around its offset.
     private virtualChord(entry: Entry, e: KeyboardEvent): string | null {
@@ -853,7 +835,7 @@ export class PromptCollection extends HTMLElement {
         if (virtual === "next" && after.includes("\n")) {
             return null;
         }
-        return virtual;
+        return VIRTUAL_CHORDS[virtual];
     }
 
     // ── Reconfiguration ─────────────────────────────────────────────────────

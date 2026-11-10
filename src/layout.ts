@@ -13,17 +13,21 @@ import {
     type Complex,
     complexAt,
     configurePrompts,
+    DIRECTION_SIDE,
+    FALLBACK_FLOAT,
     find,
     findTab,
     genId,
     kind,
     type LayoutNode,
     type Lifecycle,
+    pane as newPaneOf,
     type PaneNode,
     type PromptColumnNode,
     panes,
     promptColumn,
     type Rect,
+    randomName,
     type SplitNode,
     scrollColumn,
     scrollRow,
@@ -131,7 +135,7 @@ type ZoneCap = { zone: HTMLElement; cell: HTMLElement; room: number };
 /** The default layout: one unnamed pane, where the first prompt goes. */
 export function defaultLayout(): WorkspaceData {
     return {
-        root: { type: "pane", id: genId("p"), weight: 1, tabs: [], active: 0 },
+        root: newPaneOf([]),
         floating: [],
     };
 }
@@ -143,59 +147,6 @@ function tabStatus(entry: Entry): StatusString {
 
 const escapeHtml = (s: string): string =>
     s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
-
-const ADJECTIVES = [
-    "amber",
-    "brisk",
-    "calm",
-    "dusky",
-    "eager",
-    "fuzzy",
-    "gentle",
-    "hazy",
-    "icy",
-    "jolly",
-    "keen",
-    "lucid",
-    "mellow",
-    "nimble",
-    "olive",
-    "plucky",
-    "quiet",
-    "rusty",
-    "sunny",
-    "tidy",
-    "vivid",
-    "witty",
-];
-const NOUNS = [
-    "badger",
-    "comet",
-    "delta",
-    "ember",
-    "falcon",
-    "grove",
-    "harbor",
-    "island",
-    "lantern",
-    "meadow",
-    "nebula",
-    "otter",
-    "pebble",
-    "quartz",
-    "river",
-    "sparrow",
-    "thicket",
-    "willow",
-    "yarrow",
-    "zephyr",
-];
-
-/** A name, quickly: two words at random. */
-function randomName(): string {
-    const pick = (words: string[]) => words[Math.floor(Math.random() * words.length)];
-    return `${pick(ADJECTIVES)}-${pick(NOUNS)}`;
-}
 
 /** A new tab, offering what can go in it (see Layout.chooser). */
 function chooserTab(): Tab {
@@ -741,13 +692,7 @@ export class Layout {
     }
 
     private findTab(tabId: string): { pane: PaneNode; index: number } | null {
-        for (const t of this.ws.trees()) {
-            const ft = findTab(t, tabId);
-            if (ft) {
-                return ft;
-            }
-        }
-        return null;
+        return this.ws.findTab(tabId);
     }
 
     // ── Placing ──────────────────────────────────────────────────────────────
@@ -801,13 +746,7 @@ export class Layout {
         const at = anchorTab ? this.findTab(anchorTab) : null;
         const isPrompt = !!tab.group;
         const pane = (p: PaneNode | null) => p ?? this.defaultPane();
-        const newPane = (): PaneNode => ({
-            type: "pane",
-            id: genId("p"),
-            weight: 1,
-            tabs: [tab],
-            active: 0,
-        });
+        const newPane = (): PaneNode => newPaneOf([tab]);
         const into = (p: PaneNode, index = p.tabs.length) =>
             this.ws.hostDrop(
                 { kind: "external", node: newPane() },
@@ -906,7 +845,7 @@ export class Layout {
         if (target.zone === "float") {
             // A floating window of its own, over the anchor's pane.
             const base = pane(at ? this.outerPane(at.pane.id) : null);
-            const rect = this.view.floatRect(base.id) ?? { x: 40, y: 40, w: 420, h: 280 };
+            const rect = this.view.newWindowRect(base.id);
             if (!this.ws.hostFloat(newPane(), rect)) {
                 into(base);
             }
@@ -1068,13 +1007,7 @@ export class Layout {
         };
         // An empty pane: kept, it stays to be filled — with a tab dropped in, or
         // from the slot the view shows in it (its renderEmpty).
-        const emptyPane = (): PaneNode => ({
-            type: "pane",
-            id: genId("p"),
-            weight: 1,
-            tabs: [],
-            active: 0,
-        });
+        const emptyPane = (): PaneNode => newPaneOf([]);
         el.setOptions([
             { label: "New pane", pick: () => named(emptyPane) },
             { label: "New scroll column", pick: () => named(() => scrollColumn([])) },
@@ -1134,20 +1067,12 @@ export class Layout {
             return;
         }
         const tab = chooserTab();
-        const side = ({ left: "left", right: "right", up: "top", down: "bottom" } as const)[
-            dir ?? "right"
-        ];
+        const side = DIRECTION_SIDE[dir ?? "right"];
         // (Beside: a new pane. Else into a pane: this one, or the neighbour's.)
         const next = dir && !beside ? ws.cellAt(base.id, dir) : null;
         const dest = beside ? null : !dir ? base : next ? this.outerPane(next) : null;
         if (dest) {
-            const node: PaneNode = {
-                type: "pane",
-                id: genId("p"),
-                weight: 1,
-                tabs: [tab],
-                active: 0,
-            };
+            const node = newPaneOf([tab]);
             const r = ws.tryDrop(
                 { kind: "external", node },
                 { kind: "tab", paneId: dest.id, index: dest.tabs.length },
@@ -1177,7 +1102,7 @@ export class Layout {
         if (!base) {
             return;
         }
-        const rect = this.view.floatRect(base.id) ?? { x: 40, y: 40, w: 420, h: 280 };
+        const rect = this.view.newWindowRect(base.id);
         // (The new tab is the lifecycle's spawn: a chooser.)
         ws.select({ id: base.id });
         ws.spawnFloat(rect);
@@ -1247,7 +1172,7 @@ export class Layout {
         const base = (at && this.outerPane(at.pane.id)) ?? this.defaultPane();
         const r = this.view.pxRect(base.id);
         if (!r) {
-            return { x: 40, y: 40, w: 480, h: 280 };
+            return { ...FALLBACK_FLOAT, w: 480 };
         }
         const margin = 8;
         const q = anchor?.cell?.kind === "prompt" ? this.promptNodeOf(anchor) : null;

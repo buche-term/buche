@@ -87,8 +87,18 @@ describe("promptHelpEntries", () => {
             description: "Pick files with fzf",
         },
         "ctrl+b": { command: "@pop sel bed", inherit: true },
-        Enter: { builtin: "submit", freeze: true },
-        Previous: { builtin: "previous" },
+        // (As coquille sends its built-ins: with what they do.)
+        Enter: {
+            builtin: "submit",
+            freeze: true,
+            title: "Run the command",
+            description: "Run what is typed, and add it to the history",
+        },
+        Previous: {
+            builtin: "previous",
+            title: "Previous command",
+            description: "Go back in the history",
+        },
         "ctrl+l": "clear",
         "alt+x": { builtin: "fancy" },
     };
@@ -177,7 +187,7 @@ describe("prompt bindings' categories", () => {
             "yank",
         ]);
         expect(filterHelp(entries, "", new Set(["files"])).shown.map((e) => e.title)).toEqual([
-            "Close the shell",
+            "close",
             "yank",
         ]);
     });

@@ -106,10 +106,9 @@
 // consolidated components.css).
 
 import type { DomProps } from "myjsx/jsx-runtime";
-import { canonicalChord } from "../config.ts";
+import { canonicalChord, isMac } from "../chords.ts";
 import { guiCspMeta } from "../csp.ts";
 import type { FocusCommittable } from "../focus.ts";
-import { isMac } from "../keychord.ts";
 import type { Json } from "../types.ts";
 import { RUNTIME } from "./buche-gui-runtime.ts";
 import type { EchoBox } from "./echo-box.tsx";

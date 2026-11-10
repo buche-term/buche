@@ -22,7 +22,6 @@
 // pure, so the renderer can resolve the config it is handed, and report
 // what's wrong in it.
 
-import type { Modifier } from "carreau";
 import { type ActionRef, type Args, actions, refKey } from "./actions.ts";
 import { type Chord, chordString, type Mod, parseChord, type Side } from "./chords.ts";
 
@@ -128,8 +127,8 @@ export function resolveShell(layers: (BucheConfig | null | undefined)[]): {
     return { shell, errors };
 }
 
-/** Carreau's name for a modifier (its `activation.modifier`). */
-export const CARREAU_MOD: Record<Mod, Modifier> = {
+/** A modifier's `KeyboardEvent.key` ("Control" for Ctrl). */
+export const MOD_KEY: Record<Mod, string> = {
     Shift: "Shift",
     Alt: "Alt",
     Ctrl: "Control",

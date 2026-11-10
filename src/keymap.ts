@@ -19,7 +19,7 @@
 // altogether (a click in empty space leaves it on `body`).
 
 import type { NavMode } from "carreau";
-import { CARREAU_MOD, type Context, eventChords, type ModeSpec, type Rule } from "./config.ts";
+import { type Context, eventChords, MOD_KEY, type ModeSpec, type Rule } from "./config.ts";
 
 const MODIFIER_CODE = /^(Alt|Control|Meta|Shift)(Left|Right)$/;
 
@@ -102,7 +102,7 @@ export class Keymap {
     }
 
     private modifierHeld(spec: ModeSpec, e: KeyboardEvent): boolean {
-        const mod = CARREAU_MOD[spec.hold];
+        const mod = MOD_KEY[spec.hold];
         const flag = { Shift: e.shiftKey, Alt: e.altKey, Ctrl: e.ctrlKey, Meta: e.metaKey }[
             spec.hold
         ];
@@ -243,11 +243,11 @@ export class Keymap {
             }
         }
         const active = this.active;
-        if (active && e.key === CARREAU_MOD[active.hold]) {
+        if (active && e.key === MOD_KEY[active.hold]) {
             const { side } = active;
             if (
                 side === "either" ||
-                e.code === CARREAU_MOD[active.hold] + (side === "left" ? "Left" : "Right")
+                e.code === MOD_KEY[active.hold] + (side === "left" ? "Left" : "Right")
             ) {
                 // On Windows/Linux, releasing a bare Alt focuses the menu bar: not here.
                 e.preventDefault();

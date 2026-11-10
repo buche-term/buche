@@ -6,6 +6,7 @@
 // stands for the iframe: it is its own parent, and not a native document.)
 
 import { beforeAll, expect, test } from "vitest";
+import { eventChords } from "../src/chords.ts";
 import { bucheGuiRuntime } from "../src/components/buche-gui-runtime.ts";
 
 const BASE = "http://localhost:1234/lib/";
@@ -17,7 +18,7 @@ beforeAll(() => {
         fetched.push(String(url));
         return new Response("ok");
     };
-    bucheGuiRuntime();
+    bucheGuiRuntime(eventChords);
 });
 
 const command = (data: unknown) =>
