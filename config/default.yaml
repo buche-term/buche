@@ -94,7 +94,7 @@
 # whole.
 shell:
   command: cq
-  github: breuleux/coquille
+  github: buche-term/coquille
   version: ">=0.0.1"
 
 bindings:

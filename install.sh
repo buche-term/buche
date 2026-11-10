@@ -1,7 +1,7 @@
 #!/bin/sh
 # Install (or upgrade) buche from its GitHub releases:
 #
-#   curl -fsSL https://raw.githubusercontent.com/breuleux/buche/main/install.sh | sh
+#   curl -fsSL https://buche.sh/buche.sh | sh
 #
 # macOS (Apple Silicon): Buche.app in /Applications (~/Applications if that
 # is not writable). Downloaded with curl, the app is not quarantined:
@@ -20,7 +20,7 @@
 
 set -eu
 
-REPO="breuleux/buche"
+REPO="buche-term/buche"
 
 say() { printf 'buche: %s\n' "$*"; }
 die() { printf 'buche: error: %s\n' "$*" >&2; exit 1; }

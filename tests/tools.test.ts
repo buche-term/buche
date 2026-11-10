@@ -25,9 +25,9 @@ describe("resolveShell", () => {
     });
 
     test("command defaults to the repository's name", () => {
-        expect(resolveShell([{ shell: { github: "breuleux/coquille" } }]).shell).toEqual({
+        expect(resolveShell([{ shell: { github: "buche-term/coquille" } }]).shell).toEqual({
             command: "coquille",
-            github: "breuleux/coquille",
+            github: "buche-term/coquille",
         });
     });
 
