@@ -5,6 +5,9 @@
     "IncomingDriverMessage": {
       "anyOf": [
         {
+          "$ref": "#/definitions/BucheActionMessage"
+        },
+        {
           "$ref": "#/definitions/CloseMessage"
         },
         {
@@ -30,6 +33,74 @@
         }
       ],
       "description": "Union of every message type."
+    },
+    "BucheActionMessage": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "buche_action",
+          "description": "Type of the message."
+        },
+        "from": {
+          "$ref": "#/definitions/Address",
+          "description": "Address of the issuing process."
+        },
+        "to": {
+          "$ref": "#/definitions/To",
+          "description": "Target of the message."
+        },
+        "action": {
+          "$ref": "#/definitions/ActionSpec",
+          "description": "The action to run."
+        }
+      },
+      "required": [
+        "action",
+        "from",
+        "to",
+        "type"
+      ],
+      "additionalProperties": false,
+      "description": "Run an interface action, asked by the process that shows at `from`: one of the actions the user's keys and menus run — close a tab, clear a prompt's stream, rename the window. The cell the asking process shows is what the action applies to: its prompt element for a prompt, its box for a cell, in place of what the keyboard focus would have been. An unknown id does nothing. E.g. a shell's `clear` builtin, so it can clear the finished cells of its prompt's stream without producing a cell of its own."
+    },
+    "Address": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "To": {
+      "$ref": "#/definitions/Address"
+    },
+    "ActionSpec": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The action's id."
+        },
+        "args": {
+          "$ref": "#/definitions/ActionArgs",
+          "description": "Its arguments (none where it takes none)."
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false,
+      "description": "An action, named the way the interface's key bindings and menus name it (see its action registry, src/actions.ts)."
+    },
+    "ActionArgs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": [
+          "string",
+          "number",
+          "boolean"
+        ]
+      },
+      "description": "An action's arguments: scalars, as the interface's action registry takes them."
     },
     "CloseMessage": {
       "type": "object",
@@ -63,15 +134,6 @@
         "type"
       ],
       "additionalProperties": false
-    },
-    "Address": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-    "To": {
-      "$ref": "#/definitions/Address"
     },
     "CloseOutcome": {
       "type": "object",

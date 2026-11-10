@@ -36,6 +36,7 @@ import type {
     OutgoingInterfaceMessage,
     ProblemMessage,
     ResetCellMessage,
+    RunActionMessage,
     UpdateCellMessage,
     UpdateEntryMessage,
 } from "./interface-exchange/outgoing";
@@ -954,6 +955,22 @@ export class BucheInterface implements Interface {
         if (box && message.entry.cell) {
             message.entry.cell.handle(message.command, message.entry, box);
         }
+    }
+
+    /** Run an action a process asked for (the driver's `buche_action`, see
+     *  src/driver-exchange/_buche_action.ts): one of the actions the user's
+     *  keys and menus run. The process's cell stands for the focus the user
+     *  would have been in: its prompt element for a prompt, its box for a
+     *  cell, so that what applies to what is focused (a prompt's stream,
+     *  clearPrompt say) applies to it. An unknown id does nothing (the
+     *  registry's); the action runs without the keyboard's event. */
+    handle$run_action(buche: Buche, message: RunActionMessage) {
+        const { entry, action } = message;
+        const target =
+            (entry.isPrompt ? this.layout.promptElement(entry) : null) ??
+            this.layout.boxOf(entry) ??
+            undefined;
+        this.runAction({ id: action.id, args: action.args }, { target });
     }
 
     handle$problem(buche: Buche, message: ProblemMessage) {

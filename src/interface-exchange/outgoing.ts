@@ -1,4 +1,5 @@
 import type { CellCommand } from "../cell.ts";
+import type { ActionSpec } from "../driver-exchange/_buche_action.ts";
 import type { Entry } from "../entry.ts";
 import type { Target } from "../types.ts";
 import type { BucheErrorFields } from "../utils.ts";
@@ -45,10 +46,22 @@ export interface ProblemMessage extends BucheErrorFields {
     entry?: Entry;
 }
 
+/** Run an action, from the driver's `buche_action` (see
+ *  _buche_action.ts): `entry` is the cell the asking process shows, what
+ *  the action applies to. */
+export interface RunActionMessage {
+    type: "run_action";
+
+    entry: Entry;
+
+    action: ActionSpec;
+}
+
 /** Union of every message type. */
 export type OutgoingInterfaceMessage =
     | UpdateCellMessage
     | UpdateEntryMessage
     | ResetCellMessage
     | CellCommandMessage
+    | RunActionMessage
     | ProblemMessage;

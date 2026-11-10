@@ -204,6 +204,23 @@ which cancels the close (the tab stays):
 The user can still force it: Alt+Q Shift+W (or a click on the closing tab's
 spinner) kills your process and closes the tab right away.
 
+### Running interface actions: `buche_action`
+
+To run one of the interface's own actions — the ones the user's keys and
+menus run — send:
+
+```json
+{"type": "buche_action", "from": ["$proc"], "to": ["$term"],
+ "action": {"id": "clearPrompt"}}
+```
+
+The action applies to the cell your address shows: its prompt element for a
+prompt, its cell otherwise, in place of where the user's focus would have
+been. `"args"` carries its arguments, where it takes any (scalars). An
+unknown id does nothing. This is how a shell implements a `clear` builtin:
+handle the command yourself (no cell), and `clearPrompt` from your prompt's
+address clears the finished cells of its stream.
+
 ---
 
 ## 3. Commands — you → GUI

@@ -4,6 +4,7 @@
 
 /** Message `type` names for driver incoming messages. */
 export const incomingDriverMessageTypes = new Set<string>([
+    "buche_action",
     "close",
     "configure",
     "error",
@@ -46,6 +47,7 @@ export const outgoingInterfaceMessageTypes = new Set<string>([
     "cell_command",
     "problem",
     "reset_cell",
+    "run_action",
     "update_cell",
     "update_entry",
 ]);

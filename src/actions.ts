@@ -21,6 +21,10 @@ export interface BucheActionContext {
     iface: BucheInterface;
     /** The key event, when a key ran it. */
     event?: KeyboardEvent;
+    /** The element the action applies to, in place of the focus: what a
+     *  process's cell is, when it asked for the action (see `run_action`,
+     *  src/driver-exchange/_buche_action.ts). */
+    target?: Element;
     /** A context menu's pane and tab (see carreau's CarreauActionContext). */
     node?: string;
     tab?: string;
@@ -111,7 +115,9 @@ actions.define({
     categories: ["prompt"],
     run(ctx) {
         // Only that prompt's own stream: other tabs keep their spent cells.
-        const target = ctx.event?.target;
+        // The event's target (a key ran it), or the prompt element a process
+        // asked from (`buche_action`).
+        const target = ctx.target ?? ctx.event?.target;
         if (target instanceof Element && target.closest('[focusable="prompt"]')) {
             ctx.iface.clearStream(target);
         }
