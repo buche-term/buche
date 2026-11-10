@@ -18,6 +18,7 @@ import {
     find,
     findTab,
     genId,
+    groupTab,
     kind,
     type LayoutNode,
     type Lifecycle,
@@ -134,9 +135,14 @@ function tabStatus(entry: Entry): StatusString {
 const escapeHtml = (s: string): string =>
     s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
-/** A new tab, offering what can go in it (see Layout.chooser). */
-function chooserTab(): Tab {
-    return { id: genId("t"), title: "New", short: "New", data: { chooser: true } };
+/**
+ * A new tab: an empty group, named at random, its empty pane offering what can
+ * go there (see Layout.chooser). What is picked there replaces the whole group
+ * (it is a placeholder); a tab dropped into it simply goes into its pane, and
+ * the group stays, to tile more into.
+ */
+function newTab(): Tab {
+    return { ...groupTab(randomName()), data: { placeholder: true } };
 }
 
 /** What a tab shows of an entry: its label, command and status. */
@@ -204,7 +210,7 @@ export class Layout {
                     ? this.chooser({ tabId: tab.id })
                     : document.createElement("div")),
             renderEmpty: (pane) => {
-                const el = this.chooser({ paneId: pane.id });
+                const el = this.chooser(this.emptySlot(pane));
                 // Before the first prompt, the pane is likely to get it: show
                 // its options only if it doesn't, a moment later (no flash).
                 el.toggleAttribute("delayed", !this.prompted);
@@ -975,25 +981,19 @@ export class Layout {
         const el = new SlotChooser();
         const shell = this.shell;
         // A new group, empty, which stays when emptied: things go there later.
-        const group = (name: string, make: () => PaneNode | SplitNode): Tab => {
+        const group = (name: string, make: () => SplitNode): Tab => {
             const root = make();
             root.keep = true;
             return { id: genId("t"), title: name, short: escapeHtml(name), group: slot(root) };
         };
         // Named at random, the name being edited in its tab right away (like
         // renaming it: Enter keeps it, typing replaces it).
-        const named = (make: () => PaneNode | SplitNode) => {
+        const named = (make: () => SplitNode) => {
             const tab = group(randomName(), make);
             this.fill(zone, tab);
             this.view.editTabTitle(tab.id);
         };
-        // An empty pane: kept, it stays to be filled — with a tab dropped in, or
-        // from the slot the view shows in it (its renderEmpty).
-        const emptyPane = (): PaneNode => newPaneOf([]);
         el.setOptions([
-            { label: "New pane", pick: () => named(emptyPane) },
-            { label: "New scroll column", pick: () => named(() => scrollColumn([])) },
-            { label: "New scroll row", pick: () => named(() => scrollRow([])) },
             ...(shell === undefined
                 ? []
                 : [
@@ -1011,7 +1011,15 @@ export class Layout {
                           },
                       },
                   ]),
+            { label: "New scroll column", pick: () => named(() => scrollColumn([])) },
+            { label: "New scroll row", pick: () => named(() => scrollRow([])) },
         ]);
+        // In a new tab's group (see newTab): a tab dropped in makes it a group
+        // of its own, to tile more into.
+        const ft = "tabId" in where ? this.findTab(where.tabId) : null;
+        if (ft?.pane.tabs[ft.index].group) {
+            el.setHint("Drag an existing tab here to create a new group.");
+        }
         el.setCommand("A command to run here (from the last prompt)", (text) => {
             const p = this.host.lastPrompt();
             if (p) {
@@ -1031,6 +1039,19 @@ export class Layout {
     }
 
     /**
+     * The slot an empty pane is: its own tabs; or, the whole layout of a new
+     * tab's group (see newTab), that group's tab, which a choice replaces.
+     */
+    private emptySlot(pane: PaneNode): Slot {
+        const holder = this.ws.index().holder(pane.id);
+        const tab =
+            holder?.type === "pane"
+                ? holder.tabs.find((t) => t.group?.children[0]?.id === pane.id)
+                : undefined;
+        return tab?.data?.placeholder ? { tabId: tab.id } : { paneId: pane.id };
+    }
+
+    /**
      * Insert a new tab (a slot, offering what goes in it), from the focused
      * cell: into its pane, or the pane on `dir`'s side (made if there is none)
      * — or, with `beside`, in a new pane on that side. From a prompt, or a
@@ -1043,7 +1064,7 @@ export class Layout {
         if (!base) {
             return;
         }
-        const tab = chooserTab();
+        const tab = newTab();
         const side = DIRECTION_SIDE[dir ?? "right"];
         // (Beside: a new pane. Else into a pane: this one, or the neighbour's.)
         const next = dir && !beside ? ws.cellAt(base.id, dir) : null;
@@ -1059,6 +1080,11 @@ export class Layout {
             }
         } else {
             ws.place({ split: side, base: { id: base.id } }, tab);
+        }
+        // Into its group, whose pane shows what can go there.
+        const inner = tab.group?.children[0];
+        if (inner && ws.node(inner.id)) {
+            ws.select({ id: inner.id });
         }
     }
 
@@ -1111,6 +1137,9 @@ export class Layout {
             return;
         }
         this.slots.delete(zone);
+        // (Replacing a new tab's group: the selection, in it, goes to its pane.)
+        const selected = this.ws.selection.id;
+        let holder: string | null = null;
         const ok = this.ws.hostChange((forest) => {
             const t = structuredClone(tab);
             if ("tabId" in where) {
@@ -1119,6 +1148,7 @@ export class Layout {
                     return false;
                 }
                 ft.pane.tabs[ft.index] = t;
+                holder = ft.pane.id;
             } else {
                 const p = find(forest, where.paneId)?.node;
                 if (p?.type !== "pane") {
@@ -1132,6 +1162,8 @@ export class Layout {
         if (ok && inner) {
             this.ws.select({ id: inner.id });
             this.view.commitFocus();
+        } else if (ok && holder && !this.ws.node(selected)) {
+            this.ws.select({ id: holder });
         }
     }
 
@@ -1285,7 +1317,7 @@ export class Layout {
                 }
             },
             // A new tab (insert, Alt+Q I): what goes in it, the user chooses.
-            spawn: () => chooserTab(),
+            spawn: () => newTab(),
         };
     }
 

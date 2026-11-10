@@ -186,6 +186,9 @@ actions.define(
                 // Into the pane on that side, or (into: false) a new pane there.
                 ctx.iface.layout.insert(target as "left" | "right" | "up" | "down", !into);
             }
+            // The focus, into the new tab's choices (in navigation mode: once
+            // it is left).
+            ctx.iface.layout.commitFocus();
         },
     },
     { override: true },

@@ -124,6 +124,13 @@ slot-chooser:focus-within .slot-chooser-option.active {
 	font-style: italic;
 }
 
+.slot-chooser-hint {
+	margin-top: 8px;
+	padding: 0 8px;
+	font-style: italic;
+	color: #80838c;
+}
+
 /* A chooser that may well not be needed (an empty pane before the first
  * prompt, which likely goes there): it shows only after a moment. */
 slot-chooser[delayed] {

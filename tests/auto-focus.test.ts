@@ -1110,10 +1110,12 @@ describe("slots", () => {
         await settle();
         const chooser = container.querySelector("slot-chooser")!;
         expect(shown(chooser)).toBe(true);
+        // (Not a new group: no hint about making one.)
+        expect(chooser.querySelector<HTMLElement>(".slot-chooser-hint")!.hidden).toBe(true);
         iface.focus.focus(prompt(container));
         iface.interactions.purge();
 
-        pick(chooser, "4");
+        pick(chooser, "1");
         const [command] = withoutResizes(iface.interactions.purge()) as any[];
         const zone = `~${ws.paneByName("logs")!.id}`;
         expect(command).toMatchObject({ type: "user_command", text: "cq", action: "cq", zone });
@@ -1174,28 +1176,6 @@ describe("slots", () => {
         expect([...container.querySelectorAll("slot-chooser")].filter(shown)).toHaveLength(0);
     });
 
-    test("insert offers a new pane: a kept empty pane in a group, offering a slot", async () => {
-        const ctx = setup();
-        const { driver, iface, container } = ctx;
-        driver({ type: "configure", kind: "prompt", from: SHELL, label: "cq" });
-        const ws = iface.layout.ws;
-        ws.select({ id: iface.layout.promptNodeOf(ctx.buche.get(SHELL))! });
-        iface.layout.insert();
-        await settle();
-        const chooser = [...container.querySelectorAll("slot-chooser")].find(shown)!;
-        pick(chooser, "1");
-        await settle();
-        const named = (t: { title: string }) => /^[a-z]+-[a-z]+$/.test(t.title);
-        // (Found after the normalization that ran on the change: kept, empty, it stays.)
-        const tab = ws.root.type === "pane" ? ws.root.tabs.find(named) : undefined;
-        const root = tab?.group?.children[0];
-        expect(root?.type).toBe("pane");
-        expect(root && "tabs" in root && root.tabs).toEqual([]);
-        expect(root && "keep" in root && root.keep).toBe(true);
-        // (The empty pane is no dead space: it offers what can go in it.)
-        expect([...container.querySelectorAll("slot-chooser")].filter(shown)).toHaveLength(1);
-    });
-
     test("Alt+Q I F offers a slot in a new floating window", async () => {
         const ctx = setup();
         const { driver, iface, container } = ctx;
@@ -1243,7 +1223,7 @@ describe("slots", () => {
         const { iface, container } = ctx;
         await settle();
         const chooser = [...container.querySelectorAll("slot-chooser")].find(shown)!;
-        pick(chooser, "4");
+        pick(chooser, "1");
         const [spawn] = [...iface.interactions.purge()] as any[];
         expect(spawn).toMatchObject({ type: "user_spawn", command: "cq" });
         // The machine starts it at an address of its own, its prompt going there.
@@ -1258,6 +1238,132 @@ describe("slots", () => {
             label: "cq",
         });
         expect(panesOf(iface.layout.ws.root)[0].tabs.map((t) => t.title)).toEqual(["cq"]);
+    });
+
+    /** The new tab `insert` makes: a group, named at random, holding an empty pane. */
+    function newGroup(ws: ReturnType<typeof setup>["iface"]["layout"]["ws"]) {
+        const tab =
+            ws.root.type === "pane" ? ws.root.tabs.find((t) => t.data?.placeholder) : undefined;
+        const root = tab?.group?.children[0];
+        return { tab, pane: root?.type === "pane" ? root : undefined };
+    }
+
+    test("insert makes an empty group, not renamed, its pane offering a slot", async () => {
+        const ctx = setup();
+        const { driver, iface, container } = ctx;
+        driver({ type: "configure", kind: "prompt", from: SHELL, label: "cq" });
+        const ws = iface.layout.ws;
+        ws.select({ id: iface.layout.promptNodeOf(ctx.buche.get(SHELL))! });
+        iface.layout.insert();
+        await settle();
+        const { tab, pane } = newGroup(ws);
+        expect(tab?.title).toMatch(/^[a-z]+-[a-z]+$/);
+        expect(pane?.tabs).toEqual([]);
+        expect(pane?.keep).toBe(true);
+        // Selected, and no name to edit.
+        expect(ws.selection.id).toBe(pane!.id);
+        expect(container.querySelector(".carreau-tab-edit")).toBeNull();
+        const choosers = [...container.querySelectorAll("slot-chooser")].filter(shown);
+        expect(choosers).toHaveLength(1);
+        // Its options: a shell, scroll streams; then a command, and the hint.
+        const options = [...choosers[0].querySelectorAll(".slot-chooser-option")];
+        expect(options.map((o) => o.textContent)).toEqual([
+            "1  Shell (cq)",
+            "2  New scroll column",
+            "3  New scroll row",
+        ]);
+        const hint = choosers[0].querySelector<HTMLElement>(".slot-chooser-hint")!;
+        expect(hint.hidden).toBe(false);
+        expect(hint.textContent).toBe("Drag an existing tab here to create a new group.");
+    });
+
+    test("what is picked in a new group replaces the whole group", async () => {
+        const ctx = setup();
+        const { driver, iface, container } = ctx;
+        driver({ type: "configure", kind: "prompt", from: SHELL, label: "cq" });
+        const ws = iface.layout.ws;
+        ws.select({ id: iface.layout.promptNodeOf(ctx.buche.get(SHELL))! });
+        iface.layout.insert();
+        await settle();
+        const { tab } = newGroup(ws);
+        const chooser = [...container.querySelectorAll("slot-chooser")].find(shown)!;
+        iface.interactions.purge();
+        pick(chooser, "1");
+        const [command] = withoutResizes(iface.interactions.purge()) as any[];
+        const zone = `~${tab!.id}`;
+        expect(command).toMatchObject({ type: "user_command", text: "cq", zone });
+        const sub = [...SHELL, "3"];
+        driver({ type: "configure", from: sub, zone, label: "cq" });
+        driver({ type: "configure", kind: "prompt", from: [...sub, "cq"], label: "sub" });
+        await settle();
+        expect(newGroup(ws).tab).toBeUndefined();
+        expect(ws.root.type === "pane" && ws.root.tabs.map((t) => t.title)).toEqual(["cq", "sub"]);
+        expect(ws.node(ws.selection.id)).not.toBeNull();
+    });
+
+    test("a tab dropped into a new group goes into its pane; the group stays", async () => {
+        const ctx = setup();
+        const { driver, iface } = ctx;
+        driver({ type: "configure", kind: "prompt", from: SHELL, label: "cq" });
+        driver({ type: "configure", kind: "prompt", from: ["$proc", "other"], label: "other" });
+        await settle();
+        const ws = iface.layout.ws;
+        ws.select({ id: iface.layout.promptNodeOf(ctx.buche.get(SHELL))! });
+        iface.layout.insert();
+        await settle();
+        const { tab, pane } = newGroup(ws);
+        const other =
+            ws.root.type === "pane" ? ws.root.tabs.find((t) => t.title === "other")! : null;
+        const r = ws.tryDrop(
+            { kind: "tab", tabId: other!.id },
+            { kind: "tab", paneId: pane!.id, index: 0 },
+        );
+        expect(r).toBeTruthy();
+        ws.commitDrop(r!);
+        await settle();
+        const after = newGroup(ws);
+        expect(after.tab?.id).toBe(tab!.id);
+        expect(after.pane?.tabs.map((t) => t.title)).toEqual(["other"]);
+    });
+
+    test("Cmd+T inserts a new group", async () => {
+        const ctx = setup();
+        const { driver, iface, container } = ctx;
+        driver({ type: "configure", kind: "prompt", from: SHELL, label: "cq" });
+        await settle();
+        const ws = iface.layout.ws;
+        ws.select({ id: iface.layout.promptNodeOf(ctx.buche.get(SHELL))! });
+        container.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "t", code: "KeyT", metaKey: true, bubbles: true }),
+        );
+        await settle();
+        expect(newGroup(ws).pane?.tabs).toEqual([]);
+        // The keyboard focus, in what it offers.
+        const chooser = [...container.querySelectorAll("slot-chooser")].find(shown)!;
+        expect(chooser.contains(document.activeElement)).toBe(true);
+    });
+
+    test("grouping from a prompt groups its tab, not the cells above it", async () => {
+        const ctx = setup();
+        const { driver, iface } = ctx;
+        driver({ type: "configure", kind: "prompt", from: SHELL, label: "cq" });
+        driver({ type: "configure", kind: "prompt", from: ["$proc", "other"], label: "other" });
+        driver({ type: "configure", kind: "terminal", from: [...SHELL, "2"], label: "x" });
+        await settle();
+        const ws = iface.layout.ws;
+        ws.select({ id: iface.layout.promptNodeOf(ctx.buche.get(SHELL))! });
+        iface.runLayoutAction({ id: "group" });
+        await settle();
+        const root = ws.root;
+        expect(root.type).toBe("pane");
+        const tabs = root.type === "pane" ? root.tabs : [];
+        expect(tabs.map((t) => t.title)).toContain("other");
+        const group = tabs.find((t) => t.title !== "other")!;
+        const inner = group.group?.children[0];
+        expect(inner?.type === "pane" && inner.tabs.map((t) => t.title)).toEqual(["cq"]);
+        expect(inner?.type === "pane" && inner.tabs[0].group?.children[0]?.type).toBe(
+            "prompt-column",
+        );
     });
 });
 

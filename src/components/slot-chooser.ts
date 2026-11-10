@@ -7,8 +7,8 @@
 //   a letter    starts typing in the field (Enter runs it: `setCommand`)
 //   Esc         cancel (`oncancel`); in the field, back to the list
 //
-// Clicking an option picks it too. `setMessage` replaces everything with a
-// line of text; Esc still cancels.
+// Clicking an option picks it too. `setHint` adds a line of help below them.
+// `setMessage` replaces everything with a line of text; Esc still cancels.
 
 import { defineElement } from "./element.ts";
 
@@ -23,6 +23,7 @@ export class SlotChooser extends HTMLElement {
     private list = document.createElement("div");
     private field = document.createElement("input");
     private message = document.createElement("div");
+    private hint = document.createElement("div");
     /** What Enter in the field does with its text. */
     private command: { placeholder: string; run(text: string): void } | null = null;
     /** Cancelled (Esc, from the list or a message). */
@@ -47,7 +48,9 @@ export class SlotChooser extends HTMLElement {
         this.field.spellcheck = false;
         this.message.className = "slot-chooser-message";
         this.message.hidden = true;
-        this.append(this.list, this.field, this.message);
+        this.hint.className = "slot-chooser-hint";
+        this.hint.hidden = true;
+        this.append(this.list, this.field, this.hint, this.message);
         this.addEventListener("keydown", (e) => this.onKey(e));
         this.field.addEventListener("keydown", (e) => this.onFieldKey(e));
         this.field.addEventListener("focus", () => this.highlight());
@@ -84,12 +87,19 @@ export class SlotChooser extends HTMLElement {
         this.syncField();
     }
 
+    /** A line of help below the options (null: none). */
+    setHint(text: string | null): void {
+        this.hint.textContent = text ?? "";
+        this.hint.hidden = !text;
+    }
+
     /** Show a line of text instead of the options. */
     setMessage(text: string): void {
         this.message.textContent = text;
         this.message.hidden = false;
         this.list.hidden = true;
         this.field.hidden = true;
+        this.hint.hidden = true;
         this.focus({ preventScroll: true });
     }
 

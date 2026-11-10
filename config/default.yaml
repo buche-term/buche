@@ -102,6 +102,8 @@ bindings:
   # Navigation mode: Alt+Q, as long as Alt is held (Alt+Q, Q: until left).
   - { key: alt+q, action: setMode, args: { mode: nav, hold: alt } }
   - { key: mod+p, action: focusPrompt }
+  # A new tab (an empty group, showing what can go in it), in the focused pane.
+  - { key: cmd+t, action: insert }
   - { key: ctrl+l, action: clearPrompt, when: inPrompt }
   - { key: ctrl+tab, action: nextTab }
   - { key: ctrl+shift+tab, action: prevTab }
