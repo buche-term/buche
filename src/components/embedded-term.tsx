@@ -56,6 +56,7 @@
 
 import { Terminal } from "@xterm/xterm";
 import type { DomProps } from "myjsx/jsx-runtime";
+import { defineElement, LazyElement } from "./element.ts";
 
 // Minimal shape of xterm's render dimensions. Declared here rather than
 // imported: as of @xterm/xterm 6.0.0 neither `Terminal.dimensions` nor `_core`
@@ -79,10 +80,9 @@ const DEFAULT_MAX_ROWS = 10;
 // Must match --embedded-term-bg in embedded-term.css, which colours the fades.
 const THEME = { background: "#1c1c1c", foreground: "#d4d4d4", cursor: "#d4d4d4" };
 
-export class EmbeddedTerm extends HTMLElement {
+export class EmbeddedTerm extends LazyElement {
     static readonly observedAttributes = ["max-rows", "cols", "no-fade", "ed2-clears-scrollback"];
 
-    private initialized = false;
     private term!: Terminal;
     private clip!: HTMLElement;
     private fadeTop!: HTMLElement;
@@ -383,11 +383,7 @@ export class EmbeddedTerm extends HTMLElement {
 
     // ----------------------------------------------------------------- setup
 
-    private ensureSetup(): void {
-        if (this.initialized) {
-            return;
-        }
-        this.initialized = true;
+    protected setup(): void {
         this.maxRows = this.readMaxRows();
 
         const clip = (<div className="embedded-term-clip" />) as HTMLElement;
@@ -873,11 +869,7 @@ export class EmbeddedTerm extends HTMLElement {
     }
 }
 
-if (typeof customElements !== "undefined") {
-    if (!customElements.get("embedded-term")) {
-        customElements.define("embedded-term", EmbeddedTerm);
-    }
-}
+defineElement("embedded-term", EmbeddedTerm);
 
 declare module "myjsx/jsx-runtime" {
     namespace JSX {

@@ -243,10 +243,6 @@
     "CommandAction": {
       "type": "object",
       "properties": {
-        "command": {
-          "type": "string",
-          "description": "The command line."
-        },
         "freeze": {
           "type": "boolean",
           "description": "If true, the prompt's content is frozen as the action fires."
@@ -269,6 +265,10 @@
             "type": "string"
           },
           "description": "Where the help files it (e.g. the driver's name, then its own). Absent: \"prompt\"."
+        },
+        "command": {
+          "type": "string",
+          "description": "The command line."
         }
       },
       "required": [
@@ -280,10 +280,6 @@
     "BuiltinAction": {
       "type": "object",
       "properties": {
-        "builtin": {
-          "type": "string",
-          "description": "The built-in action's name."
-        },
         "freeze": {
           "type": "boolean",
           "description": "If true, the prompt's content is frozen as the action fires."
@@ -306,6 +302,10 @@
             "type": "string"
           },
           "description": "Where the help files it (e.g. the driver's name, then its own). Absent: \"prompt\"."
+        },
+        "builtin": {
+          "type": "string",
+          "description": "The built-in action's name."
         }
       },
       "required": [

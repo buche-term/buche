@@ -62,7 +62,14 @@
           "description": "Reference number for this parse. Whatever answers it — the highlight echo (a prompt `configure` carrying `request_id`) — repeats it, so the machine can drop answers to superseded inputs (the user typed on in the meantime)."
         }
       },
-      "required": ["from", "request_id", "selection", "text", "to", "type"],
+      "required": [
+        "from",
+        "request_id",
+        "selection",
+        "text",
+        "to",
+        "type"
+      ],
       "additionalProperties": false
     },
     "Address": {
@@ -83,7 +90,10 @@
           "description": "Exclusive ending position of the selection"
         }
       },
-      "required": ["start", "end"],
+      "required": [
+        "start",
+        "end"
+      ],
       "additionalProperties": false
     },
     "CommandRequest": {
@@ -124,7 +134,14 @@
           "description": "Where the command was performed, when not in the prompt: the address of the cell an inherited binding fired in (see `inherit` on actions). What the command shows is meant to go relative to it: pass it on as the `anchor` of what it configures."
         }
       },
-      "required": ["action", "from", "selection", "text", "to", "type"],
+      "required": [
+        "action",
+        "from",
+        "selection",
+        "text",
+        "to",
+        "type"
+      ],
       "additionalProperties": false
     },
     "Action": {
@@ -144,10 +161,6 @@
     "CommandAction": {
       "type": "object",
       "properties": {
-        "command": {
-          "type": "string",
-          "description": "The command line."
-        },
         "freeze": {
           "type": "boolean",
           "description": "If true, the prompt's content is frozen as the action fires."
@@ -170,19 +183,21 @@
             "type": "string"
           },
           "description": "Where the help files it (e.g. the driver's name, then its own). Absent: \"prompt\"."
+        },
+        "command": {
+          "type": "string",
+          "description": "The command line."
         }
       },
-      "required": ["command"],
+      "required": [
+        "command"
+      ],
       "additionalProperties": false,
       "description": "A command line for the driver to run (as if submitted, but leaving the prompt and its history alone)."
     },
     "BuiltinAction": {
       "type": "object",
       "properties": {
-        "builtin": {
-          "type": "string",
-          "description": "The built-in action's name."
-        },
         "freeze": {
           "type": "boolean",
           "description": "If true, the prompt's content is frozen as the action fires."
@@ -205,9 +220,15 @@
             "type": "string"
           },
           "description": "Where the help files it (e.g. the driver's name, then its own). Absent: \"prompt\"."
+        },
+        "builtin": {
+          "type": "string",
+          "description": "The built-in action's name."
         }
       },
-      "required": ["builtin"],
+      "required": [
+        "builtin"
+      ],
       "additionalProperties": false,
       "description": "One of the driver's built-in actions (e.g. coquille's submit, next...)."
     },
@@ -228,7 +249,12 @@
           "type": "number"
         }
       },
-      "required": ["code", "from", "to", "type"],
+      "required": [
+        "code",
+        "from",
+        "to",
+        "type"
+      ],
       "additionalProperties": false
     },
     "RerunRequest": {
@@ -245,7 +271,11 @@
           "$ref": "#/definitions/Address"
         }
       },
-      "required": ["from", "to", "type"],
+      "required": [
+        "from",
+        "to",
+        "type"
+      ],
       "additionalProperties": false,
       "description": "Run the process the cell at `to` shows again, from the start: as it was first run (same command, working directory and environment), in the same cells, reset (see `reset`). If it still runs, it is ended first. Which process that is, the drivers on the way decide: e.g. a shell reruns a process it runs for the cells it made for it (`$stdout`, `$frame`...), and passes the request on to the process for its own cells (unless the process left them to the shell). An address that can't be run again (nothing ran there, a builtin, or too long ago) is ignored."
     },
@@ -266,7 +296,12 @@
           "type": "string"
         }
       },
-      "required": ["command", "from", "to", "type"],
+      "required": [
+        "command",
+        "from",
+        "to",
+        "type"
+      ],
       "additionalProperties": false,
       "description": "Start another driver (a shell), at the address `to` (one segment, e.g. `[\"$d1\"]`): its messages come with their addresses under it, and messages to addresses under it go to it. For the host running the drivers, not for a driver: it starts `command`, in the terminal's working directory."
     },
@@ -293,7 +328,13 @@
           "description": "Raw input text, as produced by the terminal emulator."
         }
       },
-      "required": ["from", "stream", "text", "to", "type"],
+      "required": [
+        "from",
+        "stream",
+        "text",
+        "to",
+        "type"
+      ],
       "additionalProperties": false
     },
     "DataRequest": {
@@ -314,7 +355,12 @@
           "description": "Arbitrary JSON relayed from the interface (a GUI cell message, a `proc://` request, an exec response, ...)."
         }
       },
-      "required": ["data", "from", "to", "type"],
+      "required": [
+        "data",
+        "from",
+        "to",
+        "type"
+      ],
       "additionalProperties": false
     },
     "Json": {
@@ -368,7 +414,10 @@
               "type": "number"
             }
           },
-          "required": ["height", "width"],
+          "required": [
+            "height",
+            "width"
+          ],
           "additionalProperties": false,
           "description": "The cell's content area, in CSS pixels."
         },
@@ -382,12 +431,20 @@
               "type": "number"
             }
           },
-          "required": ["height", "width"],
+          "required": [
+            "height",
+            "width"
+          ],
           "additionalProperties": false,
           "description": "The terminal grid, in character cells, when the cell holds a pty."
         }
       },
-      "required": ["from", "pixel", "to", "type"],
+      "required": [
+        "from",
+        "pixel",
+        "to",
+        "type"
+      ],
       "additionalProperties": false
     },
     "LibraryFetchRequest": {
@@ -412,7 +469,13 @@
           "description": "SHA-256 of the content wanted, lowercase hex."
         }
       },
-      "required": ["from", "hash", "request_id", "to", "type"],
+      "required": [
+        "from",
+        "hash",
+        "request_id",
+        "to",
+        "type"
+      ],
       "additionalProperties": false,
       "description": "Ask a library's authority (the driver that declared it, see `library`) for the content of one of its files, by hash. Sent by the host, addressed to the driver itself (`[\"$proc\"]`); answered by a `library_content` carrying the same `request_id`."
     },
@@ -439,7 +502,12 @@
           "type": "string"
         }
       },
-      "required": ["from", "nonce", "to", "type"],
+      "required": [
+        "from",
+        "nonce",
+        "to",
+        "type"
+      ],
       "additionalProperties": false
     },
     "To": {

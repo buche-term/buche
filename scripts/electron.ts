@@ -56,6 +56,7 @@ import { copyFileSync, readFileSync, renameSync, rmSync, watch, writeFileSync } 
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { guiRuntimeDocument } from "../src/components/buche-gui-runtime.ts";
+import { LAUNCHER_OPTIONS, pageHtml } from "./launcher.ts";
 import { ensureUserConfig, resetBindings } from "./user-config.ts";
 
 const scriptDir = dirname(new URL(import.meta.url).pathname);
@@ -63,16 +64,7 @@ const root = join(scriptDir, "..");
 const outDir = join(root, "dist/electron");
 
 const { values } = parseArgs({
-    options: {
-        command: { type: "string", short: "c" },
-        dir: { type: "string", short: "d" },
-        layout: { type: "string", short: "l" },
-        devtools: { type: "boolean" },
-        "print-messages": { type: "boolean" },
-        update: { type: "boolean" },
-        "reset-bindings": { type: "boolean" },
-        "build-only": { type: "boolean" },
-    },
+    options: { ...LAUNCHER_OPTIONS, "build-only": { type: "boolean" } },
 });
 
 if (values["reset-bindings"]) {
@@ -106,38 +98,18 @@ function stylesheet(file: string, seen = new Set<string>()): string {
     );
 }
 
-const pageHtml = (): string => `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<title>Buche</title>
-<link rel="icon" href="buche.png" />
+const page = (): string =>
+    pageHtml({
+        head: `<link rel="icon" href="buche.png" />
 <style>
 ${readFileSync(join(carreauDir, "style.css"), "utf8")}
 ${readFileSync(join(carreauDir, "prompt.css"), "utf8")}
 </style>
 <style>
 ${stylesheet("components.css")}
-</style>
-<style>
-  :root { color-scheme: dark; }
-  html, body { margin: 0; height: 100%; }
-  body {
-    /* Very dark grey. */
-    background: #141414;
-    color: #d0d0d0;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  }
-  /* The layout (carreau) fills the window. */
-  #buche { position: fixed; inset: 0; display: flex; padding: 4px; box-sizing: border-box; }
-</style>
-</head>
-<body>
-<div id="buche"></div>
-<script defer src="renderer.js"></script>
-</body>
-</html>
-`;
+</style>`,
+        script: `<script defer src="renderer.js"></script>`,
+    });
 
 /**
  * Bundle one entrypoint. Browser code is an IIFE (the page is a `file://`
@@ -186,7 +158,7 @@ console.log("buche (electron): building");
 await build("electron/renderer.ts", "renderer.js", true);
 await build("electron/preload.ts", "preload.cjs", false);
 await build("electron/main.ts", "main.cjs", false);
-writeFileSync(join(outDir, "index.html"), pageHtml());
+writeFileSync(join(outDir, "index.html"), page());
 // The document the native `proc://<cell-id>/` origin serves (see proc-protocol.ts).
 writeFileSync(join(outDir, "runtime.html"), guiRuntimeDocument());
 // The app icon, next to the bundle: main.ts takes it from there for the Dock
@@ -231,7 +203,7 @@ if (process.env.BUCHE_CARREAU_WATCH) {
         clearTimeout(reBundling);
         reBundling = setTimeout(async () => {
             await build("electron/renderer.ts", "renderer.js", true, false);
-            writeFileSync(join(outDir, "index.html"), pageHtml());
+            writeFileSync(join(outDir, "index.html"), page());
             console.log(
                 "buche (electron): carreau changed, renderer and styles rebuilt (next window)",
             );

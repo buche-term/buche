@@ -15,14 +15,11 @@ import { randomUUID } from "node:crypto";
 import type { InM } from "./core.ts";
 import type { LibraryMessage } from "./driver-exchange/_library.ts";
 import type { LibraryContentMessage } from "./driver-exchange/_library_content.ts";
-import type {
-    OutgoingDriverMessage,
-    SignalRequest,
-    SpawnRequest,
-} from "./driver-exchange/outgoing.ts";
+import type { OutgoingDriverMessage, SpawnRequest } from "./driver-exchange/outgoing.ts";
 import type { LibraryAuthority, LibraryRegistry } from "./library.ts";
 import { ProcessCommunicator, type ProcessCommunicatorOptions } from "./process.ts";
 import type { Address } from "./types.ts";
+import { procSignal } from "./utils.ts";
 
 /** How long a driver gets to supply a library file. */
 const LIBRARY_FETCH_TIMEOUT = 10_000;
@@ -116,9 +113,9 @@ export class Drivers {
             return;
         }
         const to = id ? message.to.slice(1) : message.to;
-        const signal = message as SignalRequest;
-        if (message.type === "signal" && to.length === 1 && to[0] === "$proc") {
-            proc.kill(signal.code);
+        const code = procSignal(message, to);
+        if (code !== null) {
+            proc.kill(code);
         } else {
             proc.send({ ...message, to } as OutgoingDriverMessage);
         }

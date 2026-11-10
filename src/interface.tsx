@@ -2,7 +2,7 @@ import { KeyboardNav, type WorkspaceData } from "carreau";
 import { carreauActions } from "carreau/actions";
 import { type ActionRef, actions, type BucheActionContext } from "./actions.ts";
 import { shortcutsFor } from "./bindings.ts";
-import { echoElementId, isSpent, killable } from "./cell.ts";
+import { echoElementId, killable } from "./cell.ts";
 import { PromptCell } from "./cells/prompt.ts";
 import { eventChords, isMac } from "./chords.ts";
 import { BucheGui, GUI_APPEAR_EVENT, GUI_SEND_EVENT } from "./components/buche-gui.tsx";
@@ -29,6 +29,7 @@ import type { Buche } from "./core";
 import type { Entry } from "./entry.ts";
 import { type FocusChangeDetail, FocusManager } from "./focus.ts";
 import { helpEntries, type PromptBindingsSource, promptHelpEntries } from "./help.ts";
+import type { UserCommandMessage } from "./interface-exchange/_user_command.ts";
 import type { IncomingInterfaceMessage } from "./interface-exchange/incoming";
 import type {
     CellCommandMessage,
@@ -148,20 +149,15 @@ export class BucheInterface implements Interface {
                     }
                 },
                 lastPrompt: () => this.lastPromptEntry(),
-                run: (prompt, text, zone) => {
-                    const id = `c${++this.commandSeq}`;
-                    this.focus.expect(echoElementId(id));
-                    this.interactions.push({
-                        type: "user_command",
-                        id,
+                run: (prompt, text, zone) =>
+                    this.sendCommand({
                         entry: prompt,
                         text,
                         selection: { start: text.length, end: text.length },
                         // The typed text, as a command line to run.
                         action: text,
                         zone,
-                    });
-                },
+                    }),
                 spawn: (command, zone) =>
                     this.interactions.push({ type: "user_spawn", command, zone }),
                 // Context menus (see menus.ts): their actions are buche's
@@ -277,7 +273,7 @@ export class BucheInterface implements Interface {
                 this.releaseCellFocus(el);
                 return;
             }
-            const entry = this.guiEntry(el);
+            const entry = entryAt(el);
             if (entry) {
                 this.interactions.push({
                     type: "cell_gui_feedback",
@@ -293,7 +289,7 @@ export class BucheInterface implements Interface {
             if (!(el instanceof HTMLElement)) {
                 return;
             }
-            const entry = this.guiEntry(el);
+            const entry = entryAt(el);
             // Typed in it, the chords its prompts' inherited bindings bind
             // escape it too (read each time the focus enters it).
             if (el instanceof BucheGui && entry) {
@@ -331,7 +327,7 @@ export class BucheInterface implements Interface {
                 return;
             }
             const gui = this.container.querySelector(`buche-gui[proc-cell-id="${d.cellId}"]`);
-            const entry = gui ? this.guiEntry(gui) : null;
+            const entry = gui ? entryAt(gui) : null;
             if (!entry) {
                 return;
             }
@@ -347,13 +343,6 @@ export class BucheInterface implements Interface {
                 },
             });
         });
-    }
-
-    /** The entry of the cell showing the given GUI element: the entry bound
-     *  to the <echo-box> it lives in. */
-    private guiEntry(el: Element): Entry | null {
-        const box = el.closest("echo-box");
-        return box instanceof EchoBox ? box.boundEntry : null;
     }
 
     // ── Key bindings ──────────────────────────────────────────────────────────
@@ -397,20 +386,6 @@ export class BucheInterface implements Interface {
     // `anchor` (what it shows goes relative to it), and no text or selection:
     // they are the prompt's, not the cell's.
 
-    /** The entry a key's target is in: a prompt (its row), or a cell (its box). */
-    private keyEntry(target: EventTarget | null): Entry | null {
-        if (!(target instanceof Element)) {
-            return null;
-        }
-        const pc = target.closest("prompt-collection");
-        const prompt = pc instanceof PromptCollection ? pc.entryContaining(target) : null;
-        if (prompt) {
-            return prompt;
-        }
-        const box = target.closest("echo-box");
-        return box instanceof EchoBox ? box.boundEntry : null;
-    }
-
     /** The closest prompt above `entry` with an inherited binding for one of
      *  these chords, and its action. */
     inheritedBinding(entry: Entry, chords: string[]): { prompt: Entry; action: Action } | null {
@@ -443,7 +418,7 @@ export class BucheInterface implements Interface {
 
     /** A key no keymap rule took: an inherited binding's, if any (see above). */
     private runInheritedBinding(e: KeyboardEvent): boolean {
-        const entry = this.keyEntry(e.target);
+        const entry = e.target instanceof Element ? entryAt(e.target) : null;
         if (!entry) {
             return false;
         }
@@ -456,11 +431,7 @@ export class BucheInterface implements Interface {
         if (!found) {
             return false;
         }
-        const id = `c${++this.commandSeq}`;
-        this.focus.expect(echoElementId(id));
-        this.interactions.push({
-            type: "user_command",
-            id,
+        this.sendCommand({
             entry: found.prompt,
             text: "",
             selection: { start: 0, end: 0 },
@@ -518,7 +489,7 @@ export class BucheInterface implements Interface {
      *  own, then the inherited ones of the prompts above it; a cell: those of
      *  the prompts above it), closest first. Nowhere: the last prompt's. */
     private promptBindings(at: Element | null): PromptBindingsSource[] {
-        const entry = this.keyEntry(at) ?? this.lastPromptEntry();
+        const entry = (at && entryAt(at)) ?? this.lastPromptEntry();
         const sources: PromptBindingsSource[] = [];
         for (let e: Entry | null | undefined = entry; e; e = e.parent) {
             if (e.cell instanceof PromptCell) {
@@ -590,7 +561,12 @@ export class BucheInterface implements Interface {
         if (!prompt) {
             return;
         }
-        this.focus.focus(prompt, "nav");
+        this.focusPromptElement(prompt);
+    }
+
+    /** Focus a prompt's element: out of navigation mode, or committed. */
+    private focusPromptElement(element: HTMLElement): void {
+        this.focus.focus(element, "nav");
         if (this.keys.mode) {
             this.keys.leave();
         } else if (!this.focus.holdCommits) {
@@ -631,24 +607,15 @@ export class BucheInterface implements Interface {
     /** Whether a prompt element shows a prompt that is still live (one we
      *  can't tell about counts as live). */
     private isLivePrompt(el: HTMLElement): boolean {
-        const pc = el.closest("prompt-collection") as PromptCollection | null;
-        const entry = pc?.entryOf(el);
-        if (entry?.cell?.kind !== "prompt") {
-            return true;
-        }
-        return !isSpent(entry.cell.status.status);
+        const entry = entryAt(el);
+        return !entry?.isPrompt || entry.alive;
     }
 
     /** The live prompt focused last (else any live one). */
     private lastPromptEntry(): Entry | null {
-        const live = (e: Entry | undefined | null): e is Entry =>
-            e?.cell?.kind === "prompt" && !isSpent(e.cell.status.status);
         for (const { element, tags } of [...this.focus.history].reverse()) {
-            const pc = tags.includes("prompt")
-                ? (element.closest("prompt-collection") as PromptCollection | null)
-                : null;
-            const entry = pc?.entryOf(element);
-            if (live(entry)) {
+            const entry = tags.includes("prompt") ? entryAt(element) : null;
+            if (entry?.isPrompt && entry.alive) {
                 return entry;
             }
         }
@@ -665,8 +632,7 @@ export class BucheInterface implements Interface {
             }
             // Still there, but e.g. in a tab that was switched away from:
             // bring it back into view.
-            const pc = element.closest("prompt-collection") as PromptCollection | null;
-            const entry = pc?.entryOf(element);
+            const entry = entryAt(element);
             const revealed = entry ? this.layout.revealPrompt(entry) : null;
             if (revealed && isVisible(revealed)) {
                 return revealed;
@@ -693,12 +659,9 @@ export class BucheInterface implements Interface {
         }
         // Nothing to kill once the process is spent — and signaling would
         // mark the entry unresponsive for nothing.
-        const { status } = entry.cell.status;
-        if (isSpent(status)) {
-            return;
+        if (entry.alive) {
+            this.interactions.push({ type: "user_signal", code: entry.closeSignal, entry });
         }
-        const code = status === "unresponsive" ? 9 : 15;
-        this.interactions.push({ type: "user_signal", code, entry });
     }
 
     /** Ask the target cell's driver to run its process again, in the same
@@ -754,16 +717,16 @@ export class BucheInterface implements Interface {
 
     /** Relay a prompt's command to the machine, expecting the cell answering it. */
     pushCommand(detail: PromptCommandDetail): void {
+        const { entry, text, selection, action } = detail;
+        this.sendCommand({ entry, text, selection, action });
+    }
+
+    /** Send a command to a prompt's driver, under a new id, expecting the
+     *  cell answering it to take the focus. */
+    private sendCommand(command: Omit<UserCommandMessage, "type" | "id">): void {
         const id = `c${++this.commandSeq}`;
         this.focus.expect(echoElementId(id));
-        this.interactions.push({
-            type: "user_command",
-            id,
-            entry: detail.entry,
-            text: detail.text,
-            selection: detail.selection,
-            action: detail.action,
-        });
+        this.interactions.push({ type: "user_command", id, ...command });
     }
 
     // A background cell doesn't take the focus: drop the expectation of it.
@@ -787,7 +750,7 @@ export class BucheInterface implements Interface {
     // The focused cell's process ended: give the focus back, if it is in a
     // prompt's stream and not sticky.
     private releaseEndedCell(entry: Entry): void {
-        if (!isSpent(entry.cell.status.status)) {
+        if (entry.alive) {
             return;
         }
         // The focus may sit on the box itself, or anywhere inside it — the
@@ -797,9 +760,7 @@ export class BucheInterface implements Interface {
         if (!current) {
             return;
         }
-        const box = current.closest("echo-box");
-        const ent = box instanceof EchoBox ? box.boundEntry : null;
-        if (ent === entry) {
+        if (entryAt(current) === entry) {
             // Its tab is being closed (that's why it ended): where the focus
             // goes is carreau's to decide once the tab is gone (in its tab
             // group or linked group: see `focusAfterClose`), not the history's,
@@ -930,12 +891,7 @@ export class BucheInterface implements Interface {
         }
         // (Anything still expected to take the focus would steal it back.)
         this.focus.expect(null);
-        this.focus.focus(element, "nav");
-        if (this.keys.mode) {
-            this.keys.leave();
-        } else if (!this.focus.holdCommits) {
-            this.focus.commitFocus();
-        }
+        this.focusPromptElement(element);
     }
 
     handle$update_entry(buche: Buche, message: UpdateEntryMessage) {
@@ -979,6 +935,18 @@ const lastReported = new WeakMap<EchoBox, string>();
  *  interaction. Deferred to a microtask so whatever synchronous listeners the
  *  triggering event has (including Cell's initial pty fit) run first and the
  *  terminal reports its final grid. */
+/** The entry shown by the element that holds `el`: a prompt (its row), or
+ *  a cell (its box). */
+function entryAt(el: Element): Entry | null {
+    const pc = el.closest("prompt-collection");
+    const prompt = pc instanceof PromptCollection ? pc.entryContaining(el) : null;
+    if (prompt) {
+        return prompt;
+    }
+    const box = el.closest("echo-box");
+    return box instanceof EchoBox ? box.boundEntry : null;
+}
+
 function reportResize(ifc: BucheInterface, eb: EchoBox, entry: Entry): void {
     queueMicrotask(() => {
         const content = eb.content;

@@ -33,7 +33,8 @@ import {
     type OnBeforeRequestListenerDetails,
     systemPreferences,
 } from "electron";
-import { formatMessage } from "../scripts/format.ts";
+import { messageLogger } from "../scripts/format.ts";
+import { LAUNCHER_OPTIONS } from "../scripts/launcher.ts";
 import {
     expandHome,
     prependPath,
@@ -83,15 +84,7 @@ function argvConfig(): RunConfig & { resetBindings?: boolean } {
         args: process.argv.slice(app.isPackaged ? 1 : 2),
         strict: false,
         allowPositionals: true,
-        options: {
-            command: { type: "string", short: "c" },
-            dir: { type: "string", short: "d" },
-            layout: { type: "string", short: "l" },
-            devtools: { type: "boolean" },
-            "print-messages": { type: "boolean" },
-            update: { type: "boolean" },
-            "reset-bindings": { type: "boolean" },
-        },
+        options: LAUNCHER_OPTIONS,
     });
     const str = (v: unknown) => (typeof v === "string" ? v : undefined);
     const dir = str(values.dir);
@@ -161,18 +154,11 @@ if (config.cwd === undefined && process.cwd() === "/") {
 
 // Outgoing/incoming driver messages, printed like scripts/view.ts does —
 // hidden unless the run was started with --print-messages.
-const pretty = Boolean(process.stdout.isTTY);
-const width = process.stdout.columns || 80;
+const printMessage = messageLogger();
 function logMessage(role: string, message: unknown): void {
-    if (!config.printMessages) {
-        return;
+    if (config.printMessages) {
+        printMessage(message, role);
     }
-    const tagged = { ...(message as object), $role: role };
-    console.log(
-        pretty
-            ? formatMessage(tagged, { verbose: false, width, color: true })
-            : JSON.stringify(tagged),
-    );
 }
 
 // Everything after the scheme registration needs the app to be ready, and the

@@ -46,12 +46,8 @@ export interface Selection {
     end: number;
 }
 
-/** A command line for the driver to run (as if submitted, but leaving the
- *  prompt and its history alone). */
-export interface CommandAction {
-    /** The command line. */
-    command: string;
-
+/** What every action can have, besides what it runs. */
+export interface ActionOptions {
     /** If true, the prompt's content is frozen as the action fires. */
     freeze?: boolean;
 
@@ -64,6 +60,7 @@ export interface CommandAction {
      * are empty (not the prompt's).
      */
     inherit?: boolean;
+
     /**
      * What it does, in a few words (e.g. "Pick a file"), for the help.
      * Absent: its command line, or the built-in's name.
@@ -77,34 +74,17 @@ export interface CommandAction {
     categories?: string[];
 }
 
+/** A command line for the driver to run (as if submitted, but leaving the
+ *  prompt and its history alone). */
+export interface CommandAction extends ActionOptions {
+    /** The command line. */
+    command: string;
+}
+
 /** One of the driver's built-in actions (e.g. coquille's submit, next...). */
-export interface BuiltinAction {
+export interface BuiltinAction extends ActionOptions {
     /** The built-in action's name. */
     builtin: string;
-
-    /** If true, the prompt's content is frozen as the action fires. */
-    freeze?: boolean;
-
-    /**
-     * If true, the binding also works in every cell under the prompt's
-     * address (the cells of the commands run from it, and theirs...); the
-     * closest prompt's inherited binding for a key wins (and in a prompt, its
-     * own bindings). Fired from such a cell, the command
-     * request's `anchor` is that cell's address, and its text and selection
-     * are empty (not the prompt's).
-     */
-    inherit?: boolean;
-    /**
-     * What it does, in a few words (e.g. "Pick a file"), for the help.
-     * Absent: its command line, or the built-in's name.
-     */
-    title?: string;
-
-    /** What it does, in a sentence, for the help. */
-    description?: string;
-
-    /** Where the help files it (e.g. the driver's name, then its own). Absent: "prompt". */
-    categories?: string[];
 }
 
 /**

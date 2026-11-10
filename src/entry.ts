@@ -46,6 +46,21 @@ export class Entry extends Hierarchy {
         return this.cell.kind !== "group";
     }
 
+    /** Whether it shows a prompt. */
+    get isPrompt(): boolean {
+        return this.cell.kind === "prompt";
+    }
+
+    /** Whether its process is still live (neither done nor errored). */
+    get alive(): boolean {
+        return !isSpent(this.cell.status.status);
+    }
+
+    /** The signal that ends it: SIGTERM, or SIGKILL once it is unresponsive. */
+    get closeSignal(): 9 | 15 {
+        return this.cell.status.status === "unresponsive" ? 9 : 15;
+    }
+
     /** Move to another field of the same parent (a placeholder being claimed). */
     rename(field: string): void {
         const parent = this.parent!;

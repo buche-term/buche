@@ -57,7 +57,8 @@ import type { OutgoingDriverMessage } from "../src/driver-exchange/outgoing.ts";
 import { Drivers } from "../src/drivers.ts";
 import { LibraryRegistry } from "../src/library.ts";
 import { configScript, layoutScript } from "../src/page.ts";
-import { formatMessage } from "./format.ts";
+import { messageLogger } from "./format.ts";
+import { pageHtml } from "./launcher.ts";
 import { loadUserConfig } from "./user-config.ts";
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -189,36 +190,14 @@ watch(carreauDir, { recursive: true }, () => {
     }, 100);
 });
 
-const page = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Buche</title>
-<link rel="stylesheet" href="/carreau/style.css" />
+const page = pageHtml({
+    head: `<link rel="stylesheet" href="/carreau/style.css" />
 <link rel="stylesheet" href="/carreau/prompt.css" />
-<link rel="stylesheet" href="/components.css" />
-<style>
-  :root { color-scheme: dark; }
-  html, body { margin: 0; height: 100%; }
-  body {
-    /* Very dark grey. */
-    background: #141414;
-    color: #d0d0d0;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  }
-  /* The layout (carreau) fills the window. */
-  #buche { position: fixed; inset: 0; display: flex; padding: 4px; box-sizing: border-box; }
-</style>
-</head>
-<body>
-${layoutScript(layout)}
-${configScript(loadUserConfig())}
-<div id="buche"></div>
-<script type="module" src="/client.js"></script>
-</body>
-</html>
-`;
+<link rel="stylesheet" href="/components.css" />`,
+    body: `${layoutScript(layout)}
+${configScript(loadUserConfig())}`,
+    script: `<script type="module" src="/client.js"></script>`,
+});
 
 /** Per-connection state: the driver process plus a timestamp of the last
  *  message seen in *either* direction, used to pace injected messages. */
@@ -231,17 +210,11 @@ interface Session {
 const sessions = new WeakMap<ServerWebSocket<unknown>, Session>();
 
 // On a tty, pretty-print the message stream for humans; otherwise emit JSONL.
-const pretty = Boolean(process.stdout.isTTY);
-const width = process.stdout.columns || 80;
+const printMessage = messageLogger({ verbose: values.verbose });
 
 /** Print one driver message to the console, tagged with its direction. */
 function logMessage(role: string, message: unknown): void {
-    const tagged = { ...(message as object), $role: role };
-    console.log(
-        pretty
-            ? formatMessage(tagged, { verbose: values.verbose, width, color: true })
-            : JSON.stringify(tagged),
-    );
+    printMessage(message, role);
 }
 
 // The libraries the drivers declare (src/library.ts), shared by every session

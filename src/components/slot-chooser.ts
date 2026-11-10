@@ -10,6 +10,8 @@
 // Clicking an option picks it too. `setMessage` replaces everything with a
 // line of text; Esc still cancels.
 
+import { defineElement } from "./element.ts";
+
 export interface SlotOption {
     label: string;
     pick(): void;
@@ -173,6 +175,4 @@ export class SlotChooser extends HTMLElement {
     }
 }
 
-if (typeof customElements !== "undefined" && !customElements.get("slot-chooser")) {
-    customElements.define("slot-chooser", SlotChooser);
-}
+defineElement("slot-chooser", SlotChooser);

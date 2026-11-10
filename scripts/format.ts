@@ -203,3 +203,23 @@ if (import.meta.main) {
         console.log(formatMessage(message, { verbose: values.verbose, width, color }));
     }
 }
+
+/**
+ * A printer of messages for the console: pretty on a tty, JSON lines
+ * otherwise. With a role, the message is tagged with it (`$role`: driverIn,
+ * driverOut...).
+ */
+export function messageLogger(
+    options: { verbose?: boolean } = {},
+): (message: unknown, role?: string) => void {
+    const pretty = Boolean(process.stdout.isTTY);
+    const width = process.stdout.columns || 80;
+    return (message, role) => {
+        const tagged = role ? { ...(message as object), $role: role } : message;
+        console.log(
+            pretty
+                ? formatMessage(tagged, { verbose: options.verbose, width, color: true })
+                : JSON.stringify(tagged),
+        );
+    };
+}

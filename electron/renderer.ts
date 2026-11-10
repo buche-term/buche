@@ -9,7 +9,8 @@
 import "../src/components/echo-box.tsx";
 
 import { listenQuitHint } from "../src/components/quit-hint.ts";
-import { Buche, type InM } from "../src/core.ts";
+import type { InM } from "../src/core.ts";
+import { connect } from "../src/host.ts";
 import { BucheInterface } from "../src/interface.tsx";
 import { pageSetup } from "../src/page.ts";
 
@@ -24,29 +25,16 @@ if (!bridge?.driver) {
 const iface = new BucheInterface(pageSetup());
 listenQuitHint();
 
-const buche = new Buche({
-    sendDriver(message) {
-        console.debug("[buche] driverOut", message);
-        bridge.driver?.send(message);
-    },
-    sendInterface(message) {
-        iface.processMessage(buche, message);
+// Driver messages from the main process (the shell's output) come in as
+// window messages.
+connect(iface, {
+    send: (message) => bridge.driver?.send(message),
+    onMessage(handler) {
+        window.addEventListener("message", (event) => {
+            const data = event.data as { __buche?: string; message?: InM } | null;
+            if (data?.__buche === "driver:message" && data.message) {
+                handler(data.message);
+            }
+        });
     },
 });
-
-// Driver messages from the main process (the shell's output) drive the core.
-window.addEventListener("message", (event) => {
-    const data = event.data as { __buche?: string; message?: InM } | null;
-    if (data?.__buche !== "driver:message" || !data.message) {
-        return;
-    }
-    console.debug("[buche] driverIn", data.message);
-    buche.handle(data.message);
-});
-
-// User interactions from the interface are handled the same way.
-void (async () => {
-    for await (const interaction of iface.interactions) {
-        buche.handle(interaction as InM);
-    }
-})();

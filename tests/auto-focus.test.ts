@@ -1265,7 +1265,7 @@ describe("@pop", () => {
     /** The entry of a shown prompt (by label). */
     function promptEntry(container: HTMLElement, label?: string) {
         const el = prompt(container, label);
-        return (el.closest("prompt-collection") as PromptCollection).entryOf(el)!;
+        return (el.closest("prompt-collection") as PromptCollection).entryContaining(el)!;
     }
 
     // A command from a prompt (by label, default the shell's), answered by a

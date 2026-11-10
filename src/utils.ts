@@ -1,3 +1,4 @@
+import type { OutgoingDriverMessage, SignalRequest } from "./driver-exchange/outgoing.ts";
 import type {
     Address,
     Part,
@@ -371,4 +372,16 @@ export async function* awrap<T>(stream: AsyncGenerator<T>, fn?: (arg: T) => void
     } else {
         yield* stream;
     }
+}
+
+/** The signal code, if `message` is a signal to the driver's own process
+ *  (its address, `to`, relative to the driver, is `["$proc"]`): the host
+ *  delivers that one itself. */
+export function procSignal(
+    message: OutgoingDriverMessage,
+    to: Address = message.to,
+): number | null {
+    return message.type === "signal" && to.length === 1 && to[0] === "$proc"
+        ? (message as SignalRequest).code
+        : null;
 }

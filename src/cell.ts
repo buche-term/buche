@@ -225,19 +225,29 @@ export function toStructuredText(
     return typeof label === "string" ? plainStructuredText(label) : label;
 }
 
+/** The configuration fields a cell keeps as given, when given (see
+ *  `Cell.configure`). */
+const PLAIN_FIELDS = ["id", "sticky", "background", "ephemeral", "grow"] as const;
+
+/** The configuration fields a cell has under the same name and type (all of
+ *  them but `submission`, which a cell keeps merged, and `status`, which is
+ *  the entry's). */
+const CELL_FIELDS = ["label", "color", "icon", ...PLAIN_FIELDS] as const;
+
+/** The configuration fields that change how an entry looks. */
+export const LOOK_FIELDS = ["label", "color", "icon", "submission", "grow"] as const;
+
+function copyField<T, K extends keyof T>(to: T, from: Pick<T, K>, key: K): void {
+    to[key] = from[key];
+}
+
 /** A cell's configuration, to pass on (e.g. to the views of a process). */
 export function cellConfiguration(cell: Cell): CellConfiguration {
-    return {
-        submission: cell.submission ?? undefined,
-        label: cell.label,
-        color: cell.color,
-        icon: cell.icon,
-        id: cell.id,
-        sticky: cell.sticky,
-        background: cell.background,
-        ephemeral: cell.ephemeral,
-        grow: cell.grow,
-    };
+    const config: CellConfiguration = { submission: cell.submission ?? undefined };
+    for (const key of CELL_FIELDS) {
+        copyField(config, cell, key);
+    }
+    return config;
 }
 
 /** The kind of cell a command is for (a cell takes no other). */
@@ -299,26 +309,19 @@ export abstract class Cell extends WithId() {
             this.submission ??= emptySubmission();
             applySubmission(this.submission, config.submission);
         }
-        this.id = config.id ?? this.id;
-        this.sticky = config.sticky ?? this.sticky;
-        this.background = config.background ?? this.background;
-        this.ephemeral = config.ephemeral ?? this.ephemeral;
-        this.grow = config.grow ?? this.grow;
+        for (const key of PLAIN_FIELDS) {
+            if (config[key] != null) {
+                copyField<Cell, typeof key>(this, config as Pick<Cell, typeof key>, key);
+            }
+        }
     }
 
     /** Take over the look and status of `prev`, the cell this one replaces
      *  (see `Entry.replaceCell`). */
     inherit(prev: Cell): this {
-        this.submission = prev.submission;
-        this.label = prev.label;
-        this.color = prev.color;
-        this.icon = prev.icon;
-        this.id = prev.id;
-        this.sticky = prev.sticky;
-        this.background = prev.background;
-        this.ephemeral = prev.ephemeral;
-        this.grow = prev.grow;
-        this.status = prev.status;
+        for (const key of [...CELL_FIELDS, "submission", "status"] as const) {
+            copyField<Cell, typeof key>(this, prev, key);
+        }
         return this;
     }
 

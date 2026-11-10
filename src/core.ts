@@ -7,17 +7,19 @@ import {
     cellConfiguration,
     commandKind,
     isSpent,
+    LOOK_FIELDS,
 } from "./cell.ts";
 import type { CreationInfo } from "./driver-exchange/common.ts";
 import type { IncomingDriverMessage } from "./driver-exchange/incoming.ts";
-import type { OutgoingDriverMessage, SignalRequest } from "./driver-exchange/outgoing.ts";
+import type { OutgoingDriverMessage } from "./driver-exchange/outgoing.ts";
 import { Entry, PLACEHOLDER } from "./entry.ts";
 import type { Interface } from "./interface.tsx";
 import type { IncomingInterfaceMessage } from "./interface-exchange/incoming.ts";
 import type { OutgoingInterfaceMessage, ProblemMessage } from "./interface-exchange/outgoing.ts";
 import type { ProcessCommunicator } from "./process.ts";
 import type { Address, Target, ZoneDescriptor } from "./types.ts";
-import { awrap, BucheError, type BucheErrorMessage, mergeIterables } from "./utils.ts";
+import { awrap, BucheError, type BucheErrorMessage, mergeIterables, procSignal } from "./utils.ts";
+import { zoneName } from "./zones.ts";
 
 export type InM = IncomingDriverMessage | IncomingInterfaceMessage | BucheErrorMessage;
 export type OutM = OutgoingDriverMessage | OutgoingInterfaceMessage;
@@ -27,19 +29,6 @@ export interface BucheArguments {
     sendDriver: (message: OutgoingDriverMessage) => void;
     sendInterface: (message: OutgoingInterfaceMessage) => void;
 }
-
-/** Short names of the reserved zones. */
-const ZONE_ALIASES: Record<string, string> = {
-    l: "left",
-    r: "right",
-    u: "up",
-    d: "down",
-    sl: "sleft",
-    sr: "sright",
-    su: "sup",
-    sd: "sdown",
-    f: "float",
-};
 
 export class Buche {
     handlers: HandlerT = Object.assign(
@@ -157,7 +146,7 @@ export class Buche {
         anchor?: Address | null,
     ): Target {
         let name = (zone ?? "").replace(/^@/, "");
-        name = ZONE_ALIASES[name] ?? name;
+        name = zoneName(name);
         const explicit = anchor ? this.placementAnchor(anchor, entry) : null;
         const at = (explicit ?? this.anchorOf(entry))?.address() ?? null;
         const anchored = explicit ? { anchored: true } : {};
@@ -280,7 +269,7 @@ export class Buche {
      * date (nothing is installed).
      */
     relook(entry: Entry, message: CellConfiguration): void {
-        if (!LOOK.some((k) => message[k] !== undefined)) {
+        if (!LOOK_FIELDS.some((k) => message[k] !== undefined)) {
             return;
         }
         for (const e of [entry, ...this.views(entry)]) {
@@ -336,9 +325,6 @@ export class Buche {
     }
 }
 
-/** The configuration fields that change how an entry looks. */
-const LOOK = ["label", "color", "icon", "submission", "grow"] as const;
-
 const baseHandlers = {
     buche_error(buche: Buche, obj: BucheErrorMessage): void {
         // UNUSED: the interface reads only a problem's code and reason, so the
@@ -383,16 +369,12 @@ export async function bucheRun(args: BucheRunArguments) {
     const buche = new Buche({
         sendDriver(outMessage: OutgoingDriverMessage) {
             args.loggers.driverOut?.(outMessage);
+            const signal = procSignal(outMessage);
             if (outMessage.type === "spawn") {
                 // (One driver only, here: see src/drivers.ts for hosts of more.)
                 console.warn("[buche] spawn: not supported here", outMessage);
-            } else if (
-                outMessage.type === "signal" &&
-                (outMessage as SignalRequest).to.length === 1 &&
-                (outMessage as SignalRequest).to[0] === "$proc"
-            ) {
-                const signal = outMessage as SignalRequest;
-                args.process.kill(signal.code);
+            } else if (signal !== null) {
+                args.process.kill(signal);
             } else {
                 args.process.send(outMessage);
             }

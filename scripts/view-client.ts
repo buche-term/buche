@@ -5,16 +5,16 @@
  *
  *   - A `BucheInterface` lays out the page's #buche container (carreau), from
  *     the initial layout the page gives (see src/page.ts).
- *   - A `Buche` instance is wired so `sendDriver` serialises outgoing driver
- *     messages onto the WebSocket (the server relays them to the process), and
- *     `sendInterface` hands messages to the interface to render.
- *   - Driver messages arriving over the WebSocket (the process's output) are fed
- *     straight into `buche.handle`, as are the interface's own interactions.
+ *   - The core is connected to it (src/host.ts) over the WebSocket: outgoing
+ *     driver messages are serialised onto it (the server relays them to the
+ *     process), and driver messages arriving over it (the process's output)
+ *     are handled, as are the interface's own interactions.
  */
 import "../src/components/echo-box.tsx";
 
 import { BucheGui } from "../src/components/buche-gui.tsx";
-import { Buche, type InM } from "../src/core.ts";
+import type { InM } from "../src/core.ts";
+import { connect } from "../src/host.ts";
 import { BucheInterface } from "../src/interface.tsx";
 import { pageSetup } from "../src/page.ts";
 
@@ -39,16 +39,6 @@ function sendToServer(message: unknown): void {
     }
 }
 
-const buche = new Buche({
-    sendDriver(message) {
-        console.debug("[buche] driverOut", message);
-        sendToServer(message);
-    },
-    sendInterface(message) {
-        iface.processMessage(buche, message);
-    },
-});
-
 socket.addEventListener("open", () => {
     console.log("[buche] connected");
     for (const json of outbound.splice(0)) {
@@ -58,15 +48,9 @@ socket.addEventListener("open", () => {
 socket.addEventListener("close", () => console.log("[buche] disconnected"));
 
 // Driver messages from the server (the process's output) drive the core.
-socket.addEventListener("message", (event) => {
-    const message = JSON.parse(event.data) as InM;
-    console.debug("[buche] driverIn", message);
-    buche.handle(message);
+connect(iface, {
+    send: sendToServer,
+    onMessage(handler) {
+        socket.addEventListener("message", (event) => handler(JSON.parse(event.data) as InM));
+    },
 });
-
-// User interactions from the interface are handled the same way.
-void (async () => {
-    for await (const interaction of iface.interactions) {
-        buche.handle(interaction as InM);
-    }
-})();

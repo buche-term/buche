@@ -40,7 +40,7 @@ import {
 } from "carreau";
 import { defaultTheme, resolveColor } from "./color.ts";
 import "./components/echo-box.tsx"; // (registers <echo-box>)
-import { isSpent, type StatusString } from "./cell.ts";
+import type { StatusString } from "./cell.ts";
 import type { EchoBox } from "./components/echo-box.tsx";
 import type { PromptCollection } from "./components/prompt-collection.tsx";
 import { SlotChooser } from "./components/slot-chooser.ts";
@@ -48,6 +48,7 @@ import { buildIcon, buildStructuredText } from "./components/utils.tsx";
 import { bubblesTo, type Entry } from "./entry.ts";
 import type { Address, StructuredText, Target } from "./types.ts";
 import { plainText } from "./utils.ts";
+import { RESERVED_ZONE_NAMES, reservedZone } from "./zones.ts";
 
 /** What the layout needs from the interface. */
 export interface LayoutHost {
@@ -90,21 +91,6 @@ export interface LayoutOptions {
     shell?: string;
 }
 
-/** Zones relative to the anchor: into the neighbour pane on that side. */
-const DIRECTIONS = new Set(["left", "right", "up", "down"]);
-/** Zones relative to the anchor: a new pane on that side of it. */
-const SPLITS: Record<string, "left" | "right" | "top" | "bottom"> = {
-    sleft: "left",
-    sright: "right",
-    sup: "top",
-    sdown: "bottom",
-};
-/** What a pane can't be named: the reserved zones (see Target). */
-const RESERVED = [
-    ...["left", "right", "up", "down", "l", "r", "u", "d"],
-    ...["sleft", "sright", "sup", "sdown", "sl", "sr", "su", "sd"],
-    ...["tab", "inline", "pop", "float", "f"],
-];
 /** What the room a prompt zone leaves one of its cells is kept as, for its box
  *  to be capped by (echo-box.css). */
 const ZONE_CELL_MAX = "--zone-cell-max";
@@ -203,7 +189,7 @@ export class Layout {
         this.ws = new Workspace(data.root);
         this.ws.load(data);
         this.ws.undoableClose = false;
-        this.ws.reservedNames = RESERVED;
+        this.ws.reservedNames = RESERVED_ZONE_NAMES;
         this.ws.lifecycle = this.lifecycle();
         configurePrompts(this.ws, {
             // What's typed goes to the driver (see makeEditor): the cells it
@@ -395,8 +381,7 @@ export class Layout {
             // What the cell shows besides its box, whatever that is today, plus
             // the line it stops short by: what is clamped shows a sliver of
             // what else the stream holds, rather than the whole view.
-            const above =
-                Math.max(0, cap.cell.offsetHeight - box.offsetHeight) + ZONE_PEEK_LINE;
+            const above = Math.max(0, cap.cell.offsetHeight - box.offsetHeight) + ZONE_PEEK_LINE;
             const room = Math.max(ZONE_MIN_ROOM, height - above);
             if (room === cap.room) {
                 continue;
@@ -569,7 +554,7 @@ export class Layout {
             panes(col).some((p) =>
                 p.tabs.some((t) => {
                     const e = this.entries.get(t.id);
-                    return !!e && e.cell?.kind !== "prompt" && this.alive(e);
+                    return !!e && !e.isPrompt && e.alive;
                 }),
             )
         );
@@ -577,9 +562,7 @@ export class Layout {
 
     /** A live prompt shown, if any. */
     anyPrompt(): Entry | null {
-        return (
-            [...this.tabs.keys()].find((e) => e.cell?.kind === "prompt" && this.alive(e)) ?? null
-        );
+        return [...this.tabs.keys()].find((e) => e.isPrompt && e.alive) ?? null;
     }
 
     /**
@@ -605,23 +588,21 @@ export class Layout {
         return null;
     }
 
-    /** Show a cell: its tab active (and it, selected). */
-    revealCell(entry: Entry): void {
+    /** Show a cell: its tab active (and it, selected). False: not shown. */
+    revealCell(entry: Entry): boolean {
         const tabId = this.tabs.get(entry);
         const ft = tabId && this.findTab(tabId);
         if (ft) {
             this.ws.activateTab(ft.pane.id, ft.index);
         }
+        return !!ft;
     }
 
     /** Make a prompt the one shown in its stream (its tab active), and select it. */
     revealPrompt(entry: Entry): HTMLElement | null {
-        const tabId = this.tabs.get(entry);
-        const ft = tabId && this.findTab(tabId);
-        if (!ft) {
+        if (!this.revealCell(entry)) {
             return null;
         }
-        this.ws.activateTab(ft.pane.id, ft.index);
         const q = this.promptNodeOf(entry);
         if (q) {
             this.ws.select({ id: q });
@@ -813,11 +794,12 @@ export class Layout {
             }
             return;
         }
-        if (DIRECTIONS.has(target.zone)) {
+        const reserved = reservedZone(target.zone);
+        if (reserved?.direction) {
             // Into the neighbour pane's tabs (not into a stream it shows);
             // with none on that side, a new pane there.
             const base = pane(at ? this.outerPane(at.pane.id) : null);
-            const dir = target.zone as "left" | "right" | "up" | "down";
+            const dir = reserved.direction;
             const next = this.ws.cellAt(base.id, dir);
             const dest = next ? this.outerPane(next) : null;
             if (dest) {
@@ -830,11 +812,11 @@ export class Layout {
             }
             return;
         }
-        if (target.zone in SPLITS) {
+        if (reserved?.split) {
             // A new pane on that side of the anchor's (out of scroll streams).
             const base = pane(at ? this.outerPane(at.pane.id) : null);
             const id = this.ws.hostPlace(
-                { split: SPLITS[target.zone], base: { id: base.id }, focus: false },
+                { split: reserved.split, base: { id: base.id }, focus: false },
                 tab,
             );
             if (id === null) {
@@ -1057,12 +1039,7 @@ export class Layout {
      */
     insert(dir?: "left" | "right" | "up" | "down", beside = false): void {
         const ws = this.ws;
-        const sel = ws.node(ws.selection.id);
-        const base =
-            sel &&
-            this.outerPane(
-                sel.type === "pane" || sel.type === "prompt" ? sel.id : ws.descend(sel),
-            );
+        const base = this.insertBase();
         if (!base) {
             return;
         }
@@ -1085,6 +1062,19 @@ export class Layout {
         }
     }
 
+    /** Where `insert` and `insertFloat` go from: the pane of the selected
+     *  cell, or the one holding the prompt or stream it is in. */
+    private insertBase(): PaneNode | null {
+        const sel = this.ws.node(this.ws.selection.id);
+        return (
+            (sel &&
+                this.outerPane(
+                    sel.type === "pane" || sel.type === "prompt" ? sel.id : this.ws.descend(sel),
+                )) ||
+            null
+        );
+    }
+
     /**
      * Insert a new tab (a slot, as `insert`) in a new floating window, over
      * the focused cell (or the pane holding the prompt or stream it is in).
@@ -1093,12 +1083,7 @@ export class Layout {
      */
     insertFloat(): void {
         const ws = this.ws;
-        const sel = ws.node(ws.selection.id);
-        const base =
-            sel &&
-            this.outerPane(
-                sel.type === "pane" || sel.type === "prompt" ? sel.id : ws.descend(sel),
-            );
+        const base = this.insertBase();
         if (!base) {
             return;
         }
@@ -1237,8 +1222,8 @@ export class Layout {
         }
         // (Each is signalled: the last of a process's views signals it.)
         for (const entry of this.popEntries()) {
-            if (this.alive(entry)) {
-                this.host.signal(entry, entry.cell.status.status === "unresponsive" ? 9 : 15);
+            if (entry.alive) {
+                this.host.signal(entry, entry.closeSignal);
             }
         }
         this.pop = null;
@@ -1260,17 +1245,14 @@ export class Layout {
             e.key !== "Escape" ||
             !el?.contains(e.target as Node) ||
             this.element.querySelector(".nav-mode") ||
-            this.popEntries().some((entry) => this.alive(entry))
+            this.popEntries().some((entry) => entry.alive)
         ) {
             return;
         }
         e.preventDefault();
         e.stopPropagation();
         const anchor = this.pop!.anchor;
-        const prompt =
-            anchor?.cell?.kind === "prompt" && this.alive(anchor)
-                ? anchor
-                : this.host.lastPrompt();
+        const prompt = anchor?.isPrompt && anchor.alive ? anchor : this.host.lastPrompt();
         const target = prompt && this.revealPrompt(prompt);
         if (target) {
             this.host.focus(target);
@@ -1287,7 +1269,7 @@ export class Layout {
             closeTab: (tab) => this.close(tab),
             forceCloseTab: async (tab) => {
                 const entry = this.entries.get(tab.id);
-                if (entry && this.alive(entry)) {
+                if (entry?.alive) {
                     this.host.signal(entry, 9);
                 }
             },
@@ -1307,10 +1289,6 @@ export class Layout {
         };
     }
 
-    private alive(entry: Entry): boolean {
-        return !isSpent(entry.cell.status.status);
-    }
-
     /**
      * Closing a tab signals its entry (see user_signal). When that ends its
      * process — the last of the process's views — the process is terminated
@@ -1324,15 +1302,15 @@ export class Layout {
      */
     private close(tab: Tab): Promise<void> {
         const entry = this.entries.get(tab.id);
-        if (!entry || !this.alive(entry)) {
+        if (!entry?.alive) {
             return Promise.resolve();
         }
         const group = entry.parent;
         const view = !!group?.parent && !group.visual;
         const ends = !view || bubblesTo(entry) !== null;
-        const unresponsive = entry.cell.status.status === "unresponsive";
-        this.host.signal(entry, unresponsive ? 9 : 15);
-        if (unresponsive || !ends) {
+        const code = entry.closeSignal;
+        this.host.signal(entry, code);
+        if (code === 9 || !ends) {
             return Promise.resolve();
         }
         return new Promise((resolve, reject) => {
@@ -1345,7 +1323,7 @@ export class Layout {
                     signalled = true;
                     return;
                 }
-                const alive = this.alive(entry);
+                const alive = entry.alive;
                 if (alive && !signalled) {
                     return;
                 }

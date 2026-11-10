@@ -72,6 +72,7 @@ import { defaultTheme, resolveColor, styleToCss } from "../color.ts";
 import type { Entry } from "../entry.ts";
 import type { Action, InteractiveStructuredText, Selection, TextPart } from "../types.ts";
 import { plainText, spliceText, textParts } from "../utils.ts";
+import { defineElement, WithEvents } from "./element.ts";
 import { buildStructuredText } from "./utils.tsx";
 
 /** The cell of an entry of the collection, if it is a prompt. */
@@ -508,7 +509,7 @@ const codeMirrorEditor: EditorFactory = ({ doc, onChange }) => {
     };
 };
 
-export class PromptCollection extends HTMLElement {
+export class PromptCollection extends WithEvents<PromptCollectionEventMap>() {
     /** How each prompt's editor is created. Swap before adding prompts. */
     editorFactory: EditorFactory = codeMirrorEditor;
 
@@ -516,7 +517,6 @@ export class PromptCollection extends HTMLElement {
      *  concrete colors. */
     private readonly theme = defaultTheme;
 
-    private initialized = false;
     private promptsEl!: HTMLElement;
     // Prompts are keyed by their Entry object — the Entry is the prompt's identity.
     private rows = new Map<Entry, Row>();
@@ -533,49 +533,7 @@ export class PromptCollection extends HTMLElement {
         this.ensureSetup();
     }
 
-    // Typed event listeners for this element's custom events (see
-    // {@link PromptCollectionEventMap}); falls back to the standard signature.
-    addEventListener<K extends keyof PromptCollectionEventMap>(
-        type: K,
-        listener: (this: PromptCollection, ev: PromptCollectionEventMap[K]) => void,
-        options?: boolean | AddEventListenerOptions,
-    ): void;
-    addEventListener(
-        type: string,
-        listener: EventListenerOrEventListenerObject,
-        options?: boolean | AddEventListenerOptions,
-    ): void;
-    addEventListener(type: string, listener: unknown, options?: unknown): void {
-        super.addEventListener(
-            type,
-            listener as EventListenerOrEventListenerObject,
-            options as boolean | AddEventListenerOptions,
-        );
-    }
-
-    removeEventListener<K extends keyof PromptCollectionEventMap>(
-        type: K,
-        listener: (this: PromptCollection, ev: PromptCollectionEventMap[K]) => void,
-        options?: boolean | EventListenerOptions,
-    ): void;
-    removeEventListener(
-        type: string,
-        listener: EventListenerOrEventListenerObject,
-        options?: boolean | EventListenerOptions,
-    ): void;
-    removeEventListener(type: string, listener: unknown, options?: unknown): void {
-        super.removeEventListener(
-            type,
-            listener as EventListenerOrEventListenerObject,
-            options as boolean | EventListenerOptions,
-        );
-    }
-
-    private ensureSetup(): void {
-        if (this.initialized) {
-            return;
-        }
-        this.initialized = true;
+    protected setup(): void {
         this.replaceChildren();
 
         this.promptsEl = document.createElement("div");
@@ -714,17 +672,6 @@ export class PromptCollection extends HTMLElement {
     showPrompt(entry: Entry, focus = true): void {
         this.activate(entry, focus);
     }
-
-    /** The entry whose prompt `el` (a prompt's element) is, if any. */
-    entryOf(el: Element): Entry | null {
-        for (const [entry, row] of this.rows) {
-            if (row.row === el) {
-                return entry;
-            }
-        }
-        return null;
-    }
-
     /** The element of a prompt (its row: marker + editor), or null. */
     promptElement(entry: Entry): HTMLElement | null {
         this.ensureSetup();
@@ -986,11 +933,7 @@ export class PromptCollection extends HTMLElement {
     }
 }
 
-if (typeof customElements !== "undefined") {
-    if (!customElements.get("prompt-collection")) {
-        customElements.define("prompt-collection", PromptCollection);
-    }
-}
+defineElement("prompt-collection", PromptCollection);
 
 declare module "myjsx/jsx-runtime" {
     namespace JSX {

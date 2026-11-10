@@ -36,6 +36,7 @@
 import type { DomProps } from "myjsx/jsx-runtime";
 import type { Entry } from "../entry.ts";
 import type { FocusCommittable } from "../focus.ts";
+import { defineElement, WithEvents } from "./element.ts";
 
 /** The "resize" event (the cell's size changed) carries no detail. */
 export type EchoResizeEvent = CustomEvent<null>;
@@ -45,8 +46,7 @@ export interface EchoBoxEventMap {
     resize: EchoResizeEvent;
 }
 
-export class EchoBox extends HTMLElement implements FocusCommittable {
-    private initialized = false;
+export class EchoBox extends WithEvents<EchoBoxEventMap>() implements FocusCommittable {
     private cellEl!: HTMLElement;
     // Cell-size polling, the single source of the "resize" event (see checkSize).
     private sizeFrame = 0;
@@ -123,49 +123,7 @@ export class EchoBox extends HTMLElement implements FocusCommittable {
         this.dispatchEvent(new CustomEvent<null>("resize", { bubbles: true }));
     }
 
-    // Typed event listeners for this element's custom events (see
-    // {@link EchoBoxEventMap}); falls back to the standard signature.
-    addEventListener<K extends keyof EchoBoxEventMap>(
-        type: K,
-        listener: (this: EchoBox, ev: EchoBoxEventMap[K]) => void,
-        options?: boolean | AddEventListenerOptions,
-    ): void;
-    addEventListener(
-        type: string,
-        listener: EventListenerOrEventListenerObject,
-        options?: boolean | AddEventListenerOptions,
-    ): void;
-    addEventListener(type: string, listener: unknown, options?: unknown): void {
-        super.addEventListener(
-            type,
-            listener as EventListenerOrEventListenerObject,
-            options as boolean | AddEventListenerOptions,
-        );
-    }
-
-    removeEventListener<K extends keyof EchoBoxEventMap>(
-        type: K,
-        listener: (this: EchoBox, ev: EchoBoxEventMap[K]) => void,
-        options?: boolean | EventListenerOptions,
-    ): void;
-    removeEventListener(
-        type: string,
-        listener: EventListenerOrEventListenerObject,
-        options?: boolean | EventListenerOptions,
-    ): void;
-    removeEventListener(type: string, listener: unknown, options?: unknown): void {
-        super.removeEventListener(
-            type,
-            listener as EventListenerOrEventListenerObject,
-            options as boolean | EventListenerOptions,
-        );
-    }
-
-    private ensureSetup(): void {
-        if (this.initialized) {
-            return;
-        }
-        this.initialized = true;
+    protected setup(): void {
         if (!this.hasAttribute("focusable")) {
             this.setAttribute("focusable", "cell");
         }
@@ -274,11 +232,7 @@ export class EchoBox extends HTMLElement implements FocusCommittable {
     }
 }
 
-if (typeof customElements !== "undefined") {
-    if (!customElements.get("echo-box")) {
-        customElements.define("echo-box", EchoBox);
-    }
-}
+defineElement("echo-box", EchoBox);
 
 declare module "myjsx/jsx-runtime" {
     namespace JSX {

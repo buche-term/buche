@@ -112,6 +112,7 @@ import type { FocusCommittable } from "../focus.ts";
 import type { Json } from "../types.ts";
 import { RUNTIME } from "./buche-gui-runtime.ts";
 import type { EchoBox } from "./echo-box.tsx";
+import { defineElement, LazyElement } from "./element.ts";
 
 // Marks our messages (and says which kind they are), both ways.
 const TAG = "buche-gui";
@@ -176,7 +177,7 @@ function procBridge(): ProcBridge | null {
     return bridge && typeof bridge.respond === "function" ? (bridge as ProcBridge) : null;
 }
 
-export class BucheGui extends HTMLElement implements FocusCommittable {
+export class BucheGui extends LazyElement implements FocusCommittable {
     /**
      * Chords every new <buche-gui> hands to the page instead of letting the
      * iframe content see them. The interface sets this once (to the
@@ -200,7 +201,6 @@ export class BucheGui extends HTMLElement implements FocusCommittable {
      */
     interceptChords: () => readonly string[] = () => BucheGui.defaultInterceptChords();
 
-    private initialized = false;
     private frame!: HTMLIFrameElement;
     private content = "";
     private ready = false;
@@ -324,11 +324,7 @@ export class BucheGui extends HTMLElement implements FocusCommittable {
         return this.getAttribute("protocol") === "proc";
     }
 
-    private ensureSetup(): void {
-        if (this.initialized) {
-            return;
-        }
-        this.initialized = true;
+    protected setup(): void {
         if (!this.hasAttribute("focusable")) {
             this.setAttribute("focusable", "gui");
         }
@@ -551,11 +547,7 @@ export class BucheGui extends HTMLElement implements FocusCommittable {
     };
 }
 
-if (typeof customElements !== "undefined") {
-    if (!customElements.get("buche-gui")) {
-        customElements.define("buche-gui", BucheGui);
-    }
-}
+defineElement("buche-gui", BucheGui);
 
 declare module "myjsx/jsx-runtime" {
     namespace JSX {

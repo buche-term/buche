@@ -39,7 +39,7 @@
 import "./dom-setup.ts";
 import { parseArgs } from "node:util";
 import { runSim } from "../tests/sim.ts";
-import { formatMessage } from "./format.ts";
+import { messageLogger } from "./format.ts";
 
 const { values } = parseArgs({
     options: {
@@ -54,11 +54,6 @@ const { values } = parseArgs({
 });
 
 // On a tty, pretty-print for humans; otherwise emit JSONL identical to -o.
-const pretty = Boolean(process.stdout.isTTY);
-const width = process.stdout.columns || 80;
-const log = pretty
-    ? (message: any) =>
-          console.log(formatMessage(message, { verbose: values.verbose, width, color: true }))
-    : (message: any) => console.log(JSON.stringify(message));
+const log = messageLogger({ verbose: values.verbose });
 
-await runSim(values, { log });
+await runSim(values, { log: (message) => log(message) });
